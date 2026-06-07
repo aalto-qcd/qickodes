@@ -492,12 +492,11 @@ class QickInstrument(Instrument):
             )
             path.mkdir(exist_ok=True)
             reads_per_shot = [ro["trigs"] for ro in program.ro_chs.values()]
+            acc_buf = program.acc_buf_shots_first()
             for channel_index in range(len(reads_per_shot)):
                 channel_num = list(program.ro_chs.keys())[channel_index]
                 for readout_num in range(reads_per_shot[channel_index]):
-                    shots = program.acc_buf[channel_index][..., readout_num, :].dot(
-                        [1, 1j]
-                    )
+                    shots = acc_buf[channel_index][..., readout_num, :].dot([1, 1j])
                     name = ""
                     if len(software_sweep_indices) > 0:
                         name += "sweep_"
@@ -530,6 +529,9 @@ class QickInstrument(Instrument):
         ddr4_num_transfers = self.ddr4_buffer.num_transfers.get()
 
         reads_per_shot = [ro["trigs"] for ro in program.ro_chs.values()]
+        # single-shot buffer (reps axis first), only needed by the per-shot modes
+        if acquisition_mode in ["accumulated geometric median", "accumulated shots"]:
+            acc_buf = program.acc_buf_shots_first()
         result_index = 0
         for channel_index in range(len(reads_per_shot)):
             channel_iq = all_iq[channel_index]
@@ -546,7 +548,7 @@ class QickInstrument(Instrument):
                     result_index += 1
                 elif acquisition_mode == "accumulated geometric median":
                     # Calculate the geometric median of the single-shot data
-                    iq = program.acc_buf[channel_index][..., readout_num, :]
+                    iq = acc_buf[channel_index][..., readout_num, :]
                     gm = geometric_median(iq).dot([1, 1j])
                     datasaver.add_result(
                         *param_values, (result_parameters[result_index], gm)
@@ -560,9 +562,7 @@ class QickInstrument(Instrument):
                     result_index += 1
                 elif acquisition_mode == "accumulated shots":
                     # Accumulate over readout window and save single-shot data
-                    iq = program.acc_buf[channel_index][..., readout_num, :].dot(
-                        [1, 1j]
-                    )
+                    iq = acc_buf[channel_index][..., readout_num, :].dot([1, 1j])
                     datasaver.add_result(
                         *param_values, (result_parameters[result_index], iq)
                     )
@@ -604,13 +604,14 @@ class QickInstrument(Instrument):
         reads_per_shot = [ro["trigs"] for ro in program.ro_chs.values()]
         num_readouts = sum(reads_per_shot)
         hard_avgs = self.hard_avgs.get()
-        sweep_shape = program.acc_buf[0].shape[1:-2]
+        acc_buf = program.acc_buf_shots_first()
+        sweep_shape = acc_buf[0].shape[1:-2]
 
         classified = np.empty((hard_avgs, *sweep_shape, num_readouts), dtype=int)
         readout_index = 0
         for channel_index in range(len(reads_per_shot)):
             for readout_num in range(reads_per_shot[channel_index]):
-                iq = program.acc_buf[channel_index][..., readout_num, :].dot([1, 1j])
+                iq = acc_buf[channel_index][..., readout_num, :].dot([1, 1j])
                 classified[..., readout_index] = state_classifier(iq)
                 readout_index += 1
 
