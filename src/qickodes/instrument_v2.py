@@ -230,6 +230,18 @@ class QickInstrument(Instrument):
         if acquisition_mode == "state population":
             assert num_states >= 2
             assert state_classifier is not None
+
+        # Choose where the "reps" (single-shot) loop sits. For shot-resolved modes we
+        # want the reps loop innermost, so all shots at a given sweep point are taken
+        # consecutively (tighter single-shot IQ clouds, valid shot-to-shot statistics).
+        # For averaged modes we keep reps outermost so slow drift averages out across
+        # the sweep. Pass reps_innermost explicitly to override this default.
+        if reps_innermost is None:
+            reps_innermost = acquisition_mode in [
+                "accumulated shots",
+                "accumulated geometric median",
+                "state population",
+            ]
         if hardware_loop_counts is None:
             hardware_loop_counts = {}
         if len(hardware_loop_counts) == 0 and acquisition_mode in [
