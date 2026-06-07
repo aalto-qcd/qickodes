@@ -212,6 +212,7 @@ class QickInstrument(Instrument):
         num_states: int = 0,
         state_classifier: Callable[[np.ndarray], np.ndarray] | None = None,
         save_shots_as_npy: bool = False,
+        reps_innermost: bool | None = None,
     ) -> int:
         if len(self.macro_list) == 0:
             msg = (
@@ -279,7 +280,7 @@ class QickInstrument(Instrument):
             time_parameter = None
 
         # generate the program just to obtain the ADC channel numbers and the number of readouts per shot
-        program = AveragerProgram(self, hardware_loop_counts)
+        program = AveragerProgram(self, hardware_loop_counts, reps_innermost)
         adc_channel_nums = program.ro_chs.keys()
         reads_per_shot = [ro["trigs"] for ro in program.ro_chs.values()]
         assert len(adc_channel_nums) == len(reads_per_shot)
@@ -341,6 +342,7 @@ class QickInstrument(Instrument):
                     num_states,
                     state_classifier,
                     save_shots_as_npy,
+                    reps_innermost,
                     software_sweep_indices=(),
                     progress=True,
                 )
@@ -366,6 +368,7 @@ class QickInstrument(Instrument):
                         num_states,
                         state_classifier,
                         save_shots_as_npy,
+                        reps_innermost,
                         software_sweep_indices=indices,
                         progress=False,
                     )
@@ -392,6 +395,7 @@ class QickInstrument(Instrument):
         num_states: int,
         state_classifier: Callable[[np.ndarray], np.ndarray] | None,
         save_shots_as_npy: bool,
+        reps_innermost: bool,
         software_sweep_indices: Sequence[int],
         progress: bool,
     ):
@@ -399,7 +403,7 @@ class QickInstrument(Instrument):
             self.ddr4_buffer.arm()
 
         # run the program
-        program = AveragerProgram(self, hardware_loop_counts)
+        program = AveragerProgram(self, hardware_loop_counts, reps_innermost)
         reads_per_shot = [ro["trigs"] for ro in program.ro_chs.values()]
         if acquisition_mode == "decimated":
             all_iq = qick.qick_asm.AcquireMixin.acquire_decimated(
