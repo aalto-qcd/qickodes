@@ -85,21 +85,21 @@ recommend using a fresh venv for reproducibility.
     - [`meas_resonator_vs_qubit_state.py`](https://github.com/aalto-qcd/qickodes/blob/main/example_scripts/meas_resonator_vs_qubit_state.py): Measure resonator spectra with the qubit in the ground and excited states
     - [`meas_t1.py`](https://github.com/aalto-qcd/qickodes/blob/main/example_scripts/meas_t1.py): Measure the T1 of the qubit
 
-## Averaging: reps, rounds, and loop ordering
+## Instructions for averaging modes
 
 Each call to `QickInstrument.run()` averages over two kinds of repetition:
 
-- **`hard_avgs` (reps)** are repeated on the board within a single program run.
-- **`soft_avgs` (rounds)** rerun the whole program in software and average the results.
+- `hard_avgs` (reps) are repeated on the board within a single program run.
+- `soft_avgs` (rounds) rerun the whole program in software and average the results.
 
 When you also sweep a parameter on the board (via `hardware_loop_counts`), the
 `reps_innermost` argument of `run()` controls where the reps loop sits relative to the
 sweep:
 
-- **`reps_innermost=False`** (reps outermost): the whole sweep is repeated `hard_avgs`
+- `reps_innermost=False` (reps outermost): the whole sweep is repeated `hard_avgs`
   times, so slow drift tends to average out across the sweep. Best for averaged
   measurements.
-- **`reps_innermost=True`** (reps innermost): all shots at a given sweep point are taken
+- `reps_innermost=True` (reps innermost): all shots at a given sweep point are taken
   consecutively. This gives tighter single-shot IQ clouds and valid shot-to-shot
   statistics, and it is also faster when per-point setup (e.g. reloading envelopes) is
   expensive, since each point is configured only once.
