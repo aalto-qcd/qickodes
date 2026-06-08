@@ -128,6 +128,13 @@ class QickInstrument(Instrument):
             name="hard_avgs",
             instrument=self,
             label="Number of hardware repetitions to average over",
+            docstring=(
+                """Number of hardware repetitions ('reps') averaged on the board within a
+                single program run. This is the averaging loop of the program; its
+                position relative to the hardware sweeps (outermost or innermost) is
+                controlled by the reps_innermost argument of run().
+                """
+            ),
             vals=Ints(min_value=0),
             initial_value=1000,
         )
@@ -135,6 +142,14 @@ class QickInstrument(Instrument):
             name="soft_avgs",
             instrument=self,
             label="Number of software repetitions to average over",
+            docstring=(
+                """Number of software repetitions ('rounds'): the whole program is rerun
+                this many times and the results are averaged in software. Must be 1 for
+                the shot-resolved acquisition modes (accumulated shots, accumulated
+                geometric median, state population, ddr4), which read the raw per-shot
+                buffer that only retains the last round.
+                """
+            ),
             vals=Ints(min_value=0),
             initial_value=1,
         )
