@@ -424,11 +424,20 @@ class QickInstrument(Instrument):
                 rounds=self.soft_avgs.get(),
                 progress=progress,
             )
+            # The decimated buffer is flattened in loop order (outermost loop slowest).
+            # Un-flatten the loop axes, move the reps axis to the front, then re-flatten
+            # the sweep axes, so the result is reps-first (hard_avgs, sweeps, ...) for
+            # both reps_innermost settings. Downstream code averages over axis 0 (reps).
+            reps_axis = program.reps_axis()
+            loop_dims = program.loop_dims
             for channel_index in range(len(reads_per_shot)):
                 channel_iq = all_iq[channel_index]
                 length = len(program.get_time_axis(channel_index))
+                trigs = reads_per_shot[channel_index]
+                channel_iq = channel_iq.reshape(*loop_dims, trigs, length, 2)
+                channel_iq = np.moveaxis(channel_iq, reps_axis, 0)
                 all_iq[channel_index] = channel_iq.reshape(
-                    self.hard_avgs.get(), -1, reads_per_shot[channel_index], length, 2
+                    self.hard_avgs.get(), -1, trigs, length, 2
                 )
                 if len(hardware_loop_counts) == 0:
                     all_iq[channel_index] = all_iq[channel_index][:, 0, :, :, :]
