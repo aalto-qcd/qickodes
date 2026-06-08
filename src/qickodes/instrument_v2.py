@@ -229,12 +229,81 @@ class QickInstrument(Instrument):
         save_shots_as_npy: bool = False,
         reps_innermost: bool | None = None,
     ) -> int:
+        """Compile and run a program, then save the acquired data to a QCoDeS dataset.
+
+        The program is built from the instrument's current `macro_list`. It runs the
+        body once per "shot" inside nested loops: an averaging loop of `hard_avgs`
+        repetitions, plus any hardware sweep loops in `hardware_loop_counts`. The whole
+        thing is optionally repeated for each combination of `software_sweeps` values
+        (executed in Python) and averaged in software over `soft_avgs` rounds.
+
+        Parameters
+        ----------
+        meas
+            The QCoDeS `Measurement` to run within. Setpoint and result parameters are
+            registered on it, and data is saved through its `DataSaver`.
+        software_sweeps
+            Sweeps executed in Python: the program is recompiled and rerun once per
+            combination of values. Each sweep adds an outer setpoint axis.
+        hardware_loop_counts
+            Mapping of hardware (tProc) loop name to iteration count. `QickParam` sweeps
+            that span a named loop are swept on the board within a single program run.
+        acquisition_mode
+            How the readout data is acquired and reduced:
+
+            - `"accumulated"`: IQ value per readout, averaged over reps (and rounds).
+            - `"accumulated shots"`: per-shot IQ with no averaging over reps; adds a
+              "shot" setpoint axis. Requires `soft_avgs == 1`.
+            - `"accumulated geometric median"`: geometric median of the single-shot IQ
+              cloud at each point, plus the median absolute deviation. Requires
+              `soft_avgs == 1`.
+            - `"state population"`: classify every shot and report the population
+              fraction of each state. Requires `num_states` and `state_classifier`,
+              and `soft_avgs == 1`.
+            - `"decimated"`: time-domain (decimated) waveform per readout, averaged
+              over reps.
+            - `"ddr4"`: long decimated capture streamed through the DDR4 buffer.
+              Requires `soft_avgs == 1`.
+        num_states
+            Number of qubit states (>= 2). Only used by `"state population"`.
+        state_classifier
+            Callable mapping a complex IQ array to integer state labels. Only used by
+            `"state population"`.
+        save_shots_as_npy
+            If True, also dump the raw per-shot IQ to `.npy` files next to the database.
+        reps_innermost
+            Where the `hard_avgs` ("reps") loop sits relative to the hardware sweeps.
+
+            - `True`: reps innermost. All shots at a given sweep point are taken
+              consecutively, giving tighter single-shot IQ clouds and valid shot-to-shot
+              statistics. Also a performance option for averaged sweeps: each sweep point
+              is configured once instead of re-running the whole sweep per rep, which
+              helps when per-point setup (e.g. reloading envelopes) is expensive.
+            - `False`: reps outermost. The whole sweep is repeated `hard_avgs` times,
+              so slow drift tends to average out across the sweep.
+            - `None` (default): choose automatically -- `True` for the shot-resolved
+              modes ("accumulated shots", "accumulated geometric median",
+              "state population"), `False` otherwise.
+
+        Returns
+        -------
+        int
+            The `run_id` of the saved QCoDeS dataset.
+
+        Notes
+        -----
+        `hard_avgs` (reps) are averaged on the board within a single program run, while
+        `soft_avgs` (rounds) rerun the whole program in software and average the
+        results. `soft_avgs` must be 1 for the shot-resolved modes, since those read
+        the raw per-shot buffer, which only retains the last round.
+        """
         if len(self.macro_list) == 0:
             msg = (
                 "`macro_list` is empty. Please define the sequence with"
                 "`QickInstrument.set_macro_list([...])` before running the measurement."
             )
             raise RuntimeError(msg)
+
         if acquisition_mode in [
             "accumulated geometric median",
             "accumulated shots",
