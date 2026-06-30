@@ -1,5 +1,7 @@
 # QICKoDeS
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21066164.svg)](https://doi.org/10.5281/zenodo.21066164)
+
 A [QCoDeS](https://github.com/microsoft/qcodes) driver for [QICK](https://github.com/openquantumhardware/qick). Usable but still under active development. Pull requests are welcome!
 
 Supports Python 3.9+
