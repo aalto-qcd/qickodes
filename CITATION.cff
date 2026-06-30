@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: qickodes
+abstract: "A QCoDeS driver for QICK-based RFSoC hardware."
+type: software
+authors:
+  - family-names: Sunada
+    given-names: Yoshiki
+    orcid: "https://orcid.org/0000-0003-1628-0134"
+  - family-names: Panigrahi
+    given-names: Ashish
+    orcid: "https://orcid.org/0000-0001-5707-2038"
+  - family-names: Albanese
+    given-names: Jonatan
+    orcid: "https://orcid.org/0009-0003-3067-7856"
+version: 0.1.5
+date-released: "2026-06-12"
+license: MIT
+repository-code: "https://github.com/aalto-qcd/qickodes"
+keywords:
+  - quantum computing
+  - QICK
+  - RFSoC
+  - QCoDeS
+  - microwave measurement
+# doi: 10.5281/zenodo.XXXXXXX
