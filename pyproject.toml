@@ -28,8 +28,8 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest"]
 
-[tool.setuptools]
-packages = ["qcodes_qick"]
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.ruff]
 # Pin the Ruff version so CI (astral-sh/ruff-action auto-detects this) matches
@@ -70,7 +70,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "example_scripts/*" = ["F401", "F403", "F405", "INP001"]
 "example_scripts_v2/*" = ["F401", "F403", "F405", "INP001"]
-"qcodes_qick/protocol_base.py" = ["SLF001"]
+"src/qickodes/protocol_base.py" = ["SLF001"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
