@@ -48,3 +48,22 @@ please do report them in the [issue tracker](https://github.com/aalto-qcd/qickod
     - [`meas_pi_pulse_gain_sweep.py`](https://github.com/aalto-qcd/qickodes/blob/main/example_scripts/meas_pi_pulse_gain_sweep.py): Optimize the amplitude of a pi pulse (play 10 pi pulses and readout)
     - [`meas_resonator_vs_qubit_state.py`](https://github.com/aalto-qcd/qickodes/blob/main/example_scripts/meas_resonator_vs_qubit_state.py): Measure resonator spectra with the qubit in the ground and excited states
     - [`meas_t1.py`](https://github.com/aalto-qcd/qickodes/blob/main/example_scripts/meas_t1.py): Measure the T1 of the qubit
+
+## Citing
+
+QICKoDeS is the work of Yoshiki Sunada, Ashish Panigrahi and Jonatan Albanese.
+
+If you use QICKoDeS in your research, please cite it via its DOI:
+
+> Sunada, Y., Panigrahi, A., & Albanese, J. *QICKoDeS: A QCoDeS driver for QICK*. Zenodo. https://doi.org/10.5281/zenodo.21066164
+
+BibTeX entry:
+```bibtex
+@software{qickodes,
+author = {Sunada, Yoshiki and Panigrahi, Ashish and Albanese, Jonatan},
+title = {{QICKoDeS}: A {QCoDeS} driver for {QICK}},
+doi = {10.5281/zenodo.21066164},
+title = {{qickodes}},
+url = {https://doi.org/10.5281/zenodo.21066164}
+}
+```
