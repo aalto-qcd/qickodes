@@ -25,6 +25,11 @@ dependencies = [
     "qick>=0.2.255",
 ]
 
+[project.urls]
+Homepage = "https://github.com/aalto-qcd/qickodes"
+Repository = "https://github.com/aalto-qcd/qickodes"
+Issues = "https://github.com/aalto-qcd/qickodes/issues"
+
 [project.optional-dependencies]
 test = ["pytest"]
 
