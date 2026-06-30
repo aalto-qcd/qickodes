@@ -55,7 +55,7 @@ QICKoDeS is the work of Yoshiki Sunada, Ashish Panigrahi and Jonatan Albanese.
 
 If you use QICKoDeS in your research, please cite it via its DOI:
 
-> Sunada, Y., Panigrahi, A., & Albanese, J. *QICKoDeS: A QCoDeS driver for QICK*. Zenodo. https://doi.org/10.5281/zenodo.21066164
+> Sunada, Y., Panigrahi, A., & Albanese, J. *QICKoDeS: A QCoDeS driver for QICK*. Zenodo: https://doi.org/10.5281/zenodo.21066164
 
 BibTeX entry:
 ```bibtex
@@ -64,6 +64,7 @@ author = {Sunada, Yoshiki and Panigrahi, Ashish and Albanese, Jonatan},
 title = {{QICKoDeS}: A {QCoDeS} driver for {QICK}},
 doi = {10.5281/zenodo.21066164},
 title = {{qickodes}},
-url = {https://doi.org/10.5281/zenodo.21066164}
+url = {https://doi.org/10.5281/zenodo.21066164},
+year = {2026},
 }
 ```
