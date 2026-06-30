@@ -9,13 +9,13 @@ from qcodes import (
 )
 from qick.asm_v2 import QickSweep1D
 
-from qcodes_qick.channels_v2 import DacChannel
-from qcodes_qick.envelope_base_v2 import DacEnvelope
-from qcodes_qick.envelopes_v2 import *
-from qcodes_qick.instrument_v2 import QickInstrument, SoftwareSweep
-from qcodes_qick.macros_v2 import *
-from qcodes_qick.pulse_base_v2 import DacPulse
-from qcodes_qick.pulses_v2 import *
+from qickodes.channels_v2 import DacChannel
+from qickodes.envelope_base_v2 import DacEnvelope
+from qickodes.envelopes_v2 import *
+from qickodes.instrument_v2 import QickInstrument, SoftwareSweep
+from qickodes.macros_v2 import *
+from qickodes.pulse_base_v2 import DacPulse
+from qickodes.pulses_v2 import *
 
 experiment_name = "example_experiment"
 sample_name = "example_sample"

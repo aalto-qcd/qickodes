@@ -1,4 +1,4 @@
-"""Units tests for the tproc v2 sweep logic in qcodes_qick.
+"""Units tests for the tproc v2 sweep logic in qickodes.
 
 These tests cover `SoftwareSweep', `SweepableNumbers' validator, and
 the `SweepableParameter' get/set behaviour.
@@ -9,8 +9,8 @@ import pytest
 from qcodes import Instrument, ManualParameter
 from qick.asm_v2 import QickSweep1D
 
-from qcodes_qick.instrument_v2 import SoftwareSweep
-from qcodes_qick.parameters_v2 import SweepableNumbers, SweepableParameter
+from qickodes.instrument_v2 import SoftwareSweep
+from qickodes.parameters_v2 import SweepableNumbers, SweepableParameter
 
 
 # SoftwareSweep tests

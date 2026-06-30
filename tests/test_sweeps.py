@@ -1,4 +1,4 @@
-"""Unit tests for the tproc v1 sweep logic in qcodes_qick.protocol_base.
+"""Unit tests for the tproc v1 sweep logic in qickodes.protocol_base.
 
 These tests run without the hardware. They cover just the logic of
 SoftwareSweep, which is purely pythonic.
@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from qcodes import ManualParameter
 
-from qcodes_qick.protocol_base import SoftwareSweep
+from qickodes.protocol_base import SoftwareSweep
 
 
 def _param(unit: str = "") -> ManualParameter:

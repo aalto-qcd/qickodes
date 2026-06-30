@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "qcodes_qick"
+name = "qickodes"
 version = "0.1.5"
 description = "QCoDeS driver for QICK"
 readme = "README.md"

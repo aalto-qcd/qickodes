@@ -8,9 +8,9 @@ from qcodes import (
     load_or_create_experiment,
 )
 
-from qcodes_qick import HardwareSweep, QickInstrument, SoftwareSweep
-from qcodes_qick.instructions import *
-from qcodes_qick.protocols import *
+from qickodes import HardwareSweep, QickInstrument, SoftwareSweep
+from qickodes.instructions import *
+from qickodes.protocols import *
 
 experiment_name = "loopback"
 sample_name = "none"
