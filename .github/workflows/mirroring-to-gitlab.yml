@@ -18,7 +18,7 @@ jobs:
 
       - name: Add GitLab remote
         run: |
-          git remote add gitlab https://oauth2:${{ secrets.GITLAB_TOKEN }}@version.aalto.fi/gitlab/qcd_labs/qcodes_qick.git
+          git remote add gitlab https://oauth2:${{ secrets.GITLAB_TOKEN }}@version.aalto.fi/gitlab/qcd_labs/qickodes.git
           git fetch gitlab
 
       - name: Push to GitLab
