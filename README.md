@@ -30,6 +30,24 @@ source my-environment/bin/activate
 uv pip install qickodes
 ```
 
+### Development
+
+If you prefer using a more reproducible build, check [locking and
+syncing with uv](https://docs.astral.sh/uv/concepts/projects/sync/).
+This would install an editable installation of qickodes. Please only
+do this if you intend on modifying the source code and prefer to
+contribute upstream to this repository.
+
+```shell
+git clone https://github.com/aalto-qcd/qickodes.git
+cd qickodes/
+uv sync
+```
+
+This step would create a fresh virtual environment in
+`qickodes/.venv/` if a virtual environment doesn't exist already. We
+recommend using a fresh venv for reproducibility.
+
 ## Getting started
 
 1. Clone or copy this repository to a local PC.
