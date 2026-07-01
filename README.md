@@ -31,6 +31,14 @@ source my-environment/bin/activate
 uv pip install qickodes
 ```
 
+If you don't like using external packages,
+
+```shell
+python -m venv my-environment
+source my-environment/bin/activate
+pip install qickodes
+```
+
 ### Development
 
 If you prefer using a more reproducible build, check [locking and
