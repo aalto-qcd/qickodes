@@ -19,6 +19,17 @@ will be implemented. tProc v2 is what you should be using.
 At some point, tProc v1 will be deprecated. If you find some bugs,
 please do report them in the [issue tracker](https://github.com/aalto-qcd/qickodes/issues).
 
+## Installation
+
+The authors recommend using [uv](https://docs.astral.sh/uv/) inside a
+[virtual environment](https://docs.python.org/3/library/venv.html).
+
+```shell
+uv venv my-environment
+source my-environment/bin/activate
+uv pip install qickodes
+```
+
 ## Getting started
 
 1. Clone or copy this repository to a local PC.
