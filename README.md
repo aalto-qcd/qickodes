@@ -50,17 +50,15 @@ recommend using a fresh venv for reproducibility.
 
 ## Getting started
 
-1. Clone or copy this repository to a local PC.
-2. `pip install -e path\to\repository`
-3. Start the Pyro4 nameserver (see [here](https://github.com/openquantumhardware/qick/blob/main/pyro4/00_nameserver.ipynb), use port 8888) and the QICK server (see [here](https://github.com/openquantumhardware/qick/blob/main/pyro4/01_server.ipynb)) on a Xilinx board.
-4. Check the connection and the channel number assignment:
+1. Start the Pyro4 nameserver (see [here](https://github.com/openquantumhardware/qick/blob/main/pyro4/00_nameserver.ipynb), use port 8888) and the QICK server (see [here](https://github.com/openquantumhardware/qick/blob/main/pyro4/01_server.ipynb)) on a Xilinx board.
+2. Check the connection and the channel number assignment:
     ```python
     from qickodes import QickInstrument
     qick_instrument = QickInstrument("ip.address.of.board")
     print(qick_instrument.soccfg)
     ```
-5. Copy the scripts in the folder [`example_scripts`](https://github.com/aalto-qcd/qickodes/tree/main/example_scripts) into your folder.
-6. Edit [`header.py`](https://github.com/aalto-qcd/qickodes/blob/main/example_scripts/header.py):
+3. Copy the scripts in the folder [`example_scripts`](https://github.com/aalto-qcd/qickodes/tree/main/example_scripts) into your folder.
+4. Edit [`header.py`](https://github.com/aalto-qcd/qickodes/blob/main/example_scripts/header.py):
     - Specify the IP address of the board by editing the line like
       ```python
       qick_instrument = QickInstrument("ip.address.of.board")
@@ -69,7 +67,7 @@ recommend using a fresh venv for reproducibility.
       ```python
       readout_dac = qick_instrument.dacs[channel_number]
       ```
-7. Run the example scripts:
+5. Run the example scripts:
     - [`meas_s21_vs_adc_trig_offset.py`](https://github.com/aalto-qcd/qickodes/blob/main/example_scripts/meas_s21_vs_adc_trig_offset.py): Optimize the ADC trigger offset
     - [`meas_resonator.py`](https://github.com/aalto-qcd/qickodes/blob/main/example_scripts/meas_resonator.py): Measure S21 vs frequency
     - [`meas_punchout.py`](https://github.com/aalto-qcd/qickodes/blob/main/example_scripts/meas_punchout.py): Measure S21 vs frequency and amplitude
