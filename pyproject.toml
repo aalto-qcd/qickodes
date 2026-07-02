@@ -22,7 +22,7 @@ dependencies = [
     "geom-median",
     "pyro4",
     "qcodes",
-    "qick>=0.2.255",
+    "qick>=0.2.273",
 ]
 
 [project.urls]

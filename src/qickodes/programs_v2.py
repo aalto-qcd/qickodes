@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 import qick.asm_v2
 import qick.qick_asm
 
@@ -18,6 +19,7 @@ class AveragerProgram(qick.asm_v2.AveragerProgramV2):
         self,
         qick_instrument: QickInstrument,
         hardware_loop_counts: dict[str, int],
+        reps_innermost: bool = False,
     ):
         self.qick_instrument = qick_instrument
         self.hardware_loop_counts = hardware_loop_counts
@@ -27,7 +29,27 @@ class AveragerProgram(qick.asm_v2.AveragerProgramV2):
             final_delay=qick_instrument.final_delay.qick_param * 1e6,
             final_wait=qick_instrument.final_wait.qick_param * 1e6,
             initial_delay=qick_instrument.initial_delay.qick_param * 1e6,
+            reps_innermost=reps_innermost,
         )
+
+    def reps_axis(self) -> int:
+        """Axis of the "reps" (single-shot) loop within `loop_dims`.
+
+        These are the leading axes of `acc_buf` and of the decimated buffer. The axis
+        is 0 when reps is the outermost loop and `len(loop_dims) - 1` when it is the
+        innermost loop (i.e. when `reps_innermost` is True).
+        """
+        return [loop[0] for loop in self.loops].index("reps")
+
+    def acc_buf_shots_first(self) -> list[np.ndarray]:
+        """Per-channel accumulated buffer with the single-shot ("reps") axis at axis 0.
+
+        `acc_buf` has shape `(*loop_dims, n_reads, 2)` with the loop axes ordered
+        outermost-first. Depending on `reps_innermost`, the "reps" loop is either the
+        outermost or the innermost loop axis. Downstream single-shot processing assumes
+        the shot axis is axis 0, so move it there regardless of the loop ordering.
+        """
+        return [np.moveaxis(buf, self.reps_axis(), 0) for buf in self.acc_buf]
 
     def _initialize(self, cfg: dict):  # noqa: ARG002
         macros = self.qick_instrument.macro_list

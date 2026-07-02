@@ -128,6 +128,13 @@ class QickInstrument(Instrument):
             name="hard_avgs",
             instrument=self,
             label="Number of hardware repetitions to average over",
+            docstring=(
+                """Number of hardware repetitions ('reps') averaged on the board within a
+                single program run. This is the averaging loop of the program; its
+                position relative to the hardware sweeps (outermost or innermost) is
+                controlled by the reps_innermost argument of run().
+                """
+            ),
             vals=Ints(min_value=0),
             initial_value=1000,
         )
@@ -135,6 +142,14 @@ class QickInstrument(Instrument):
             name="soft_avgs",
             instrument=self,
             label="Number of software repetitions to average over",
+            docstring=(
+                """Number of software repetitions ('rounds'): the whole program is rerun
+                this many times and the results are averaged in software. Must be 1 for
+                the shot-resolved acquisition modes (accumulated shots, accumulated
+                geometric median, state population, ddr4), which read the raw per-shot
+                buffer that only retains the last round.
+                """
+            ),
             vals=Ints(min_value=0),
             initial_value=1,
         )
@@ -212,13 +227,83 @@ class QickInstrument(Instrument):
         num_states: int = 0,
         state_classifier: Callable[[np.ndarray], np.ndarray] | None = None,
         save_shots_as_npy: bool = False,
+        reps_innermost: bool | None = None,
     ) -> int:
+        """Compile and run a program, then save the acquired data to a QCoDeS dataset.
+
+        The program is built from the instrument's current `macro_list`. It runs the
+        body once per "shot" inside nested loops: an averaging loop of `hard_avgs`
+        repetitions, plus any hardware sweep loops in `hardware_loop_counts`. The whole
+        thing is optionally repeated for each combination of `software_sweeps` values
+        (executed in Python) and averaged in software over `soft_avgs` rounds.
+
+        Parameters
+        ----------
+        meas
+            The QCoDeS `Measurement` to run within. Setpoint and result parameters are
+            registered on it, and data is saved through its `DataSaver`.
+        software_sweeps
+            Sweeps executed in Python: the program is recompiled and rerun once per
+            combination of values. Each sweep adds an outer setpoint axis.
+        hardware_loop_counts
+            Mapping of hardware (tProc) loop name to iteration count. `QickParam` sweeps
+            that span a named loop are swept on the board within a single program run.
+        acquisition_mode
+            How the readout data is acquired and reduced:
+
+            - `"accumulated"`: IQ value per readout, averaged over reps (and rounds).
+            - `"accumulated shots"`: per-shot IQ with no averaging over reps; adds a
+              "shot" setpoint axis. Requires `soft_avgs == 1`.
+            - `"accumulated geometric median"`: geometric median of the single-shot IQ
+              cloud at each point, plus the median absolute deviation. Requires
+              `soft_avgs == 1`.
+            - `"state population"`: classify every shot and report the population
+              fraction of each state. Requires `num_states` and `state_classifier`,
+              and `soft_avgs == 1`.
+            - `"decimated"`: time-domain (decimated) waveform per readout, averaged
+              over reps.
+            - `"ddr4"`: long decimated capture streamed through the DDR4 buffer.
+              Requires `soft_avgs == 1`.
+        num_states
+            Number of qubit states (>= 2). Only used by `"state population"`.
+        state_classifier
+            Callable mapping a complex IQ array to integer state labels. Only used by
+            `"state population"`.
+        save_shots_as_npy
+            If True, also dump the raw per-shot IQ to `.npy` files next to the database.
+        reps_innermost
+            Where the `hard_avgs` ("reps") loop sits relative to the hardware sweeps.
+
+            - `True`: reps innermost. All shots at a given sweep point are taken
+              consecutively, giving tighter single-shot IQ clouds and valid shot-to-shot
+              statistics. Also a performance option for averaged sweeps: each sweep point
+              is configured once instead of re-running the whole sweep per rep, which
+              helps when per-point setup (e.g. reloading envelopes) is expensive.
+            - `False`: reps outermost. The whole sweep is repeated `hard_avgs` times,
+              so slow drift tends to average out across the sweep.
+            - `None` (default): choose automatically -- `True` for the shot-resolved
+              modes ("accumulated shots", "accumulated geometric median",
+              "state population"), `False` otherwise.
+
+        Returns
+        -------
+        int
+            The `run_id` of the saved QCoDeS dataset.
+
+        Notes
+        -----
+        `hard_avgs` (reps) are averaged on the board within a single program run, while
+        `soft_avgs` (rounds) rerun the whole program in software and average the
+        results. `soft_avgs` must be 1 for the shot-resolved modes, since those read
+        the raw per-shot buffer, which only retains the last round.
+        """
         if len(self.macro_list) == 0:
             msg = (
                 "`macro_list` is empty. Please define the sequence with"
                 "`QickInstrument.set_macro_list([...])` before running the measurement."
             )
             raise RuntimeError(msg)
+
         if acquisition_mode in [
             "accumulated geometric median",
             "accumulated shots",
@@ -229,6 +314,18 @@ class QickInstrument(Instrument):
         if acquisition_mode == "state population":
             assert num_states >= 2
             assert state_classifier is not None
+
+        # Choose where the "reps" (single-shot) loop sits. For shot-resolved modes we
+        # want the reps loop innermost, so all shots at a given sweep point are taken
+        # consecutively (tighter single-shot IQ clouds, valid shot-to-shot statistics).
+        # For averaged modes we keep reps outermost so slow drift averages out across
+        # the sweep. Pass reps_innermost explicitly to override this default.
+        if reps_innermost is None:
+            reps_innermost = acquisition_mode in [
+                "accumulated shots",
+                "accumulated geometric median",
+                "state population",
+            ]
         if hardware_loop_counts is None:
             hardware_loop_counts = {}
         if len(hardware_loop_counts) == 0 and acquisition_mode in [
@@ -279,7 +376,7 @@ class QickInstrument(Instrument):
             time_parameter = None
 
         # generate the program just to obtain the ADC channel numbers and the number of readouts per shot
-        program = AveragerProgram(self, hardware_loop_counts)
+        program = AveragerProgram(self, hardware_loop_counts, reps_innermost)
         adc_channel_nums = program.ro_chs.keys()
         reads_per_shot = [ro["trigs"] for ro in program.ro_chs.values()]
         assert len(adc_channel_nums) == len(reads_per_shot)
@@ -341,6 +438,7 @@ class QickInstrument(Instrument):
                     num_states,
                     state_classifier,
                     save_shots_as_npy,
+                    reps_innermost,
                     software_sweep_indices=(),
                     progress=True,
                 )
@@ -366,6 +464,7 @@ class QickInstrument(Instrument):
                         num_states,
                         state_classifier,
                         save_shots_as_npy,
+                        reps_innermost,
                         software_sweep_indices=indices,
                         progress=False,
                     )
@@ -392,6 +491,7 @@ class QickInstrument(Instrument):
         num_states: int,
         state_classifier: Callable[[np.ndarray], np.ndarray] | None,
         save_shots_as_npy: bool,
+        reps_innermost: bool,
         software_sweep_indices: Sequence[int],
         progress: bool,
     ):
@@ -399,7 +499,7 @@ class QickInstrument(Instrument):
             self.ddr4_buffer.arm()
 
         # run the program
-        program = AveragerProgram(self, hardware_loop_counts)
+        program = AveragerProgram(self, hardware_loop_counts, reps_innermost)
         reads_per_shot = [ro["trigs"] for ro in program.ro_chs.values()]
         if acquisition_mode == "decimated":
             all_iq = qick.qick_asm.AcquireMixin.acquire_decimated(
@@ -408,11 +508,20 @@ class QickInstrument(Instrument):
                 rounds=self.soft_avgs.get(),
                 progress=progress,
             )
+            # The decimated buffer is flattened in loop order (outermost loop slowest).
+            # Un-flatten the loop axes, move the reps axis to the front, then re-flatten
+            # the sweep axes, so the result is reps-first (hard_avgs, sweeps, ...) for
+            # both reps_innermost settings. Downstream code averages over axis 0 (reps).
+            reps_axis = program.reps_axis()
+            loop_dims = program.loop_dims
             for channel_index in range(len(reads_per_shot)):
                 channel_iq = all_iq[channel_index]
                 length = len(program.get_time_axis(channel_index))
+                trigs = reads_per_shot[channel_index]
+                channel_iq = channel_iq.reshape(*loop_dims, trigs, length, 2)
+                channel_iq = np.moveaxis(channel_iq, reps_axis, 0)
                 all_iq[channel_index] = channel_iq.reshape(
-                    self.hard_avgs.get(), -1, reads_per_shot[channel_index], length, 2
+                    self.hard_avgs.get(), -1, trigs, length, 2
                 )
                 if len(hardware_loop_counts) == 0:
                     all_iq[channel_index] = all_iq[channel_index][:, 0, :, :, :]
@@ -476,12 +585,11 @@ class QickInstrument(Instrument):
             )
             path.mkdir(exist_ok=True)
             reads_per_shot = [ro["trigs"] for ro in program.ro_chs.values()]
+            acc_buf = program.acc_buf_shots_first()
             for channel_index in range(len(reads_per_shot)):
                 channel_num = list(program.ro_chs.keys())[channel_index]
                 for readout_num in range(reads_per_shot[channel_index]):
-                    shots = program.acc_buf[channel_index][..., readout_num, :].dot(
-                        [1, 1j]
-                    )
+                    shots = acc_buf[channel_index][..., readout_num, :].dot([1, 1j])
                     name = ""
                     if len(software_sweep_indices) > 0:
                         name += "sweep_"
@@ -514,6 +622,9 @@ class QickInstrument(Instrument):
         ddr4_num_transfers = self.ddr4_buffer.num_transfers.get()
 
         reads_per_shot = [ro["trigs"] for ro in program.ro_chs.values()]
+        # single-shot buffer (reps axis first), only needed by the per-shot modes
+        if acquisition_mode in ["accumulated geometric median", "accumulated shots"]:
+            acc_buf = program.acc_buf_shots_first()
         result_index = 0
         for channel_index in range(len(reads_per_shot)):
             channel_iq = all_iq[channel_index]
@@ -530,7 +641,7 @@ class QickInstrument(Instrument):
                     result_index += 1
                 elif acquisition_mode == "accumulated geometric median":
                     # Calculate the geometric median of the single-shot data
-                    iq = program.acc_buf[channel_index][..., readout_num, :]
+                    iq = acc_buf[channel_index][..., readout_num, :]
                     gm = geometric_median(iq).dot([1, 1j])
                     datasaver.add_result(
                         *param_values, (result_parameters[result_index], gm)
@@ -544,9 +655,7 @@ class QickInstrument(Instrument):
                     result_index += 1
                 elif acquisition_mode == "accumulated shots":
                     # Accumulate over readout window and save single-shot data
-                    iq = program.acc_buf[channel_index][..., readout_num, :].dot(
-                        [1, 1j]
-                    )
+                    iq = acc_buf[channel_index][..., readout_num, :].dot([1, 1j])
                     datasaver.add_result(
                         *param_values, (result_parameters[result_index], iq)
                     )
@@ -588,13 +697,14 @@ class QickInstrument(Instrument):
         reads_per_shot = [ro["trigs"] for ro in program.ro_chs.values()]
         num_readouts = sum(reads_per_shot)
         hard_avgs = self.hard_avgs.get()
-        sweep_shape = program.acc_buf[0].shape[1:-2]
+        acc_buf = program.acc_buf_shots_first()
+        sweep_shape = acc_buf[0].shape[1:-2]
 
         classified = np.empty((hard_avgs, *sweep_shape, num_readouts), dtype=int)
         readout_index = 0
         for channel_index in range(len(reads_per_shot)):
             for readout_num in range(reads_per_shot[channel_index]):
-                iq = program.acc_buf[channel_index][..., readout_num, :].dot([1, 1j])
+                iq = acc_buf[channel_index][..., readout_num, :].dot([1, 1j])
                 classified[..., readout_index] = state_classifier(iq)
                 readout_index += 1
 
