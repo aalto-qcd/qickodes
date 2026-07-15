@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import itertools
+import logging
 from collections.abc import Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal
 
@@ -29,6 +31,23 @@ from qickodes.programs_v2 import AveragerProgram
 
 if TYPE_CHECKING:
     from qcodes.dataset.measurements import DataSaver
+
+
+@contextmanager
+def _silence_paramtype_warning():
+    """Suppress QCoDeS' paramtype-mismatch warning during registration."""
+
+    class _Filter(logging.Filter):
+        def filter(self, record):
+            return "already has paramtype" not in record.getMessage()
+
+    root = logging.getLogger()
+    log_filter = _Filter()
+    root.addFilter(log_filter)
+    try:
+        yield
+    finally:
+        root.removeFilter(log_filter)
 
 
 class SoftwareSweep:
@@ -244,86 +263,90 @@ class QickInstrument(Instrument):
         setpoints = []
 
         # initialize and register the software sweep parameters
-        for sweep in software_sweeps:
-            sweep.parameters[0].set(sweep.values[0])
-            setpoints.append(sweep.parameters[0])
-            meas.register_parameter(sweep.parameters[0], paramtype=paramtype)
-            for parameter in sweep.parameters[1:]:
-                parameter.set(sweep.values[0])
+        with _silence_paramtype_warning():
+            for sweep in software_sweeps:
+                sweep.parameters[0].set(sweep.values[0])
+                setpoints.append(sweep.parameters[0])
+                meas.register_parameter(sweep.parameters[0], paramtype=paramtype)
+                for parameter in sweep.parameters[1:]:
+                    parameter.set(sweep.values[0])
 
-        # register the shot axis if necessary
-        if acquisition_mode == "accumulated shots":
-            shot_parameter = Parameter("shot", label="Shot", unit="")
-            meas.register_parameter(shot_parameter, paramtype=paramtype)
-            setpoints.append(shot_parameter)
-        else:
-            shot_parameter = None
+            # register the shot axis if necessary
+            if acquisition_mode == "accumulated shots":
+                shot_parameter = Parameter("shot", label="Shot", unit="")
+                meas.register_parameter(shot_parameter, paramtype=paramtype)
+                setpoints.append(shot_parameter)
+            else:
+                shot_parameter = None
 
-        # register the hardware sweep parameters
-        hardware_sweep_parameters = []
-        for loop in hardware_loop_counts:
-            for parameter in self.swept_params:
-                sweep = parameter.get()
-                assert isinstance(sweep, qick.asm_v2.QickParam)
-                if loop in sweep.spans and parameter not in hardware_sweep_parameters:
-                    hardware_sweep_parameters.append(parameter)
-                    setpoints.append(parameter)
-                    meas.register_parameter(parameter, paramtype=paramtype)
+            # register the hardware sweep parameters
+            hardware_sweep_parameters = []
+            for loop in hardware_loop_counts:
+                for parameter in self.swept_params:
+                    sweep = parameter.get()
+                    assert isinstance(sweep, qick.asm_v2.QickParam)
+                    if (
+                        loop in sweep.spans
+                        and parameter not in hardware_sweep_parameters
+                    ):
+                        hardware_sweep_parameters.append(parameter)
+                        setpoints.append(parameter)
+                        meas.register_parameter(parameter, paramtype=paramtype)
 
-        # register the time axis if necessary
-        if acquisition_mode in ["decimated", "ddr4"]:
-            time_parameter = Parameter("time", label="Time", unit="sec")
-            setpoints.append(time_parameter)
-            meas.register_parameter(time_parameter, paramtype=paramtype)
-        else:
-            time_parameter = None
+            # register the time axis if necessary
+            if acquisition_mode in ["decimated", "ddr4"]:
+                time_parameter = Parameter("time", label="Time", unit="sec")
+                setpoints.append(time_parameter)
+                meas.register_parameter(time_parameter, paramtype=paramtype)
+            else:
+                time_parameter = None
 
-        # generate the program just to obtain the ADC channel numbers and the number of readouts per shot
-        program = AveragerProgram(self, hardware_loop_counts)
-        adc_channel_nums = program.ro_chs.keys()
-        reads_per_shot = [ro["trigs"] for ro in program.ro_chs.values()]
-        assert len(adc_channel_nums) == len(reads_per_shot)
-        if sum(reads_per_shot) == 0:
-            msg = (
-                "The macro_list contains no readout triggers, so no data is acquired."
-                "Include a readout macro with `QickInstrument.set_macro_list()`."
-            )
-            raise RuntimeError(msg)
-
-        # create and register the parameters representing the acquired data
-        result_parameters = []
-        if acquisition_mode == "state population":
-            for states in itertools.product(
-                range(num_states), repeat=sum(reads_per_shot)
-            ):
-                name = "population_" + "_".join(str(state) for state in states)
-                population_parameter = Parameter(name)
-                result_parameters.append(population_parameter)
-                meas.register_parameter(
-                    population_parameter, setpoints, paramtype=paramtype
+            # generate the program just to obtain the ADC channel numbers and the number of readouts per shot
+            program = AveragerProgram(self, hardware_loop_counts)
+            adc_channel_nums = program.ro_chs.keys()
+            reads_per_shot = [ro["trigs"] for ro in program.ro_chs.values()]
+            assert len(adc_channel_nums) == len(reads_per_shot)
+            if sum(reads_per_shot) == 0:
+                msg = (
+                    "The macro_list contains no readout triggers, so no data is acquired."
+                    "Include a readout macro with `QickInstrument.set_macro_list()`."
                 )
-        else:
-            for i, channel_num in enumerate(adc_channel_nums):
-                for readout_num in range(reads_per_shot[i]):
-                    name = "iq"
-                    if reads_per_shot[i] > 1:
-                        name += f"{readout_num}"
-                    if len(adc_channel_nums) > 1:
-                        name += f"_ch{channel_num}"
+                raise RuntimeError(msg)
 
-                    iq_parameter = Parameter(name)
-                    result_parameters.append(iq_parameter)
+            # create and register the parameters representing the acquired data
+            result_parameters = []
+            if acquisition_mode == "state population":
+                for states in itertools.product(
+                    range(num_states), repeat=sum(reads_per_shot)
+                ):
+                    name = "population_" + "_".join(str(state) for state in states)
+                    population_parameter = Parameter(name)
+                    result_parameters.append(population_parameter)
                     meas.register_parameter(
-                        iq_parameter, setpoints, paramtype=paramtype_iq
+                        population_parameter, setpoints, paramtype=paramtype
                     )
+            else:
+                for i, channel_num in enumerate(adc_channel_nums):
+                    for readout_num in range(reads_per_shot[i]):
+                        name = "iq"
+                        if reads_per_shot[i] > 1:
+                            name += f"{readout_num}"
+                        if len(adc_channel_nums) > 1:
+                            name += f"_ch{channel_num}"
 
-                    if acquisition_mode == "accumulated geometric median":
-                        # also save the median absolute deviation (MAD)
-                        mad_parameter = Parameter(name + "_mad")
-                        result_parameters.append(mad_parameter)
+                        iq_parameter = Parameter(name)
+                        result_parameters.append(iq_parameter)
                         meas.register_parameter(
-                            mad_parameter, setpoints, paramtype=paramtype_iq
+                            iq_parameter, setpoints, paramtype=paramtype_iq
                         )
+
+                        if acquisition_mode == "accumulated geometric median":
+                            # also save the median absolute deviation (MAD)
+                            mad_parameter = Parameter(name + "_mad")
+                            result_parameters.append(mad_parameter)
+                            meas.register_parameter(
+                                mad_parameter, setpoints, paramtype=paramtype_iq
+                            )
 
         self.snapshot(update=True)
 
