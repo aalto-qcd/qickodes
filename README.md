@@ -87,16 +87,17 @@ recommend using a fresh venv for reproducibility.
 
 ## Citing
 
-QICKoDeS is the work of Yoshiki Sunada, Ashish Panigrahi and Jonatan Albanese.
+QICKoDeS is the work of Yoshiki Sunada, Ashish Panigrahi, Jonatan
+Albanese and Mikko Möttönen.
 
 If you use QICKoDeS in your research, please cite it via its DOI:
 
-> Sunada, Y., Panigrahi, A., & Albanese, J. *QICKoDeS: A QCoDeS driver for QICK*. Zenodo: https://doi.org/10.5281/zenodo.21066164
+> Sunada, Y., Panigrahi, A., & Albanese, J., & Möttönen, M. *QICKoDeS: A QCoDeS driver for QICK*. Zenodo: https://doi.org/10.5281/zenodo.21066164
 
 BibTeX entry:
 ```bibtex
 @software{qickodes,
-author = {Sunada, Yoshiki and Panigrahi, Ashish and Albanese, Jonatan},
+author = {Sunada, Yoshiki and Panigrahi, Ashish and Albanese, Jonatan and Möttönen, Mikko},
 title = {{QICKoDeS}: A {QCoDeS} driver for {QICK}},
 doi = {10.5281/zenodo.21066164},
 title = {{qickodes}},
