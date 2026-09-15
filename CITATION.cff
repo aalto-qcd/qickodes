@@ -13,6 +13,9 @@ authors:
   - family-names: Albanese
     given-names: Jonatan
     orcid: "https://orcid.org/0009-0003-3067-7856"
+  - family-names: Möttönen
+    given-names: Mikko
+    orcid: "https://orcid.org/0000-0001-5084-2298"
 version: 0.1.5
 date-released: "2026-06-12"
 license: MIT

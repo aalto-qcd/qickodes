@@ -14,6 +14,7 @@ authors = [
   { name = "Yoshiki Sunada", email = "ysunada@stanford.edu" },
   { name = "Jonatan Albanese", email = "jonatan.albanese@aalto.fi" },
   { name = "Ashish Panigrahi", email = "ashish.panigrahi@aalto.fi" },
+  { name = "Mikko Möttönen", email = "mikko.mottonen@aalto.fi" },
 ]
 maintainers = [
   { name = "Ashish Panigrahi", email = "ashish.panigrahi@aalto.fi" },
