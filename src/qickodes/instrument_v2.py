@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import itertools
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import qick
@@ -373,7 +373,7 @@ class QickInstrument(Instrument):
                 ]
                 for indices in tqdm_product(*software_sweep_ranges):
                     # update the software sweep parameters
-                    for sweep, index in zip(software_sweeps, indices):
+                    for sweep, index in zip(software_sweeps, indices, strict=True):
                         for parameter in sweep.parameters:
                             parameter.set(sweep.values[index])
 
@@ -625,7 +625,7 @@ class QickInstrument(Instrument):
         for sweep_index in np.ndindex(sweep_shape):
             index = (slice(None), *sweep_index, Ellipsis)
             states, counts = np.unique(classified[index], return_counts=True, axis=0)
-            for state, count in zip(states, counts):
+            for state, count in zip(states, counts, strict=True):
                 population[sweep_index + tuple(state)] = count
 
         population = population.reshape(*sweep_shape, -1)
