@@ -278,12 +278,15 @@ class AdcChannel(InstrumentChannel):
                 ch=self.channel_num,
                 length=self.length.get() * 1e6,
             )
+            kwargs = {}
+            if self.matching_dac.get() is not None:
+                kwargs["gen_ch"] = self.matching_dac.get()
             program.add_readoutconfig(
                 ch=self.channel_num,
                 name=self.short_name,
                 freq=self.freq.get() / 1e6,
                 phase=0,
-                gen_ch=self.matching_dac.get(),
+                **kwargs,
             )
             program.send_readoutconfig(
                 ch=self.channel_num,
