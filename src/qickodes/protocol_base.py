@@ -194,7 +194,7 @@ class SweepProtocol(ABC, QickProtocol):
             else:
                 software_sweep_values = [sweep.values for sweep in software_sweeps]
                 for current_values in tqdm_product(*software_sweep_values):
-                    for sweep, value in zip(software_sweeps, current_values):
+                    for sweep, value in zip(software_sweeps, current_values, strict=True):
                         for parameter in sweep.parameters:
                             parameter.set(value)
                     if decimated:
@@ -277,7 +277,7 @@ class SweepProtocol(ABC, QickProtocol):
                 # Add hardware sweep parameters to the result
                 sweep_values = [sweep.values for sweep in hardware_sweeps]
                 sweep_coordinates = np.meshgrid(*sweep_values, indexing="ij")
-                for sweep, value in zip(hardware_sweeps, sweep_coordinates):
+                for sweep, value in zip(hardware_sweeps, sweep_coordinates, strict=True):
                     result.append((sweep.parameter, value))
 
                 # Add acquired data to the result
@@ -338,7 +338,7 @@ class SweepProtocol(ABC, QickProtocol):
                 sweep_values = [sweep.values for sweep in hardware_sweeps]
                 sweep_values.append(program.get_time_axis(channel_index))
                 sweep_coordinates = np.meshgrid(*sweep_values, indexing="ij")
-                for sweep, value in zip(hardware_sweeps, sweep_coordinates[:-1]):
+                for sweep, value in zip(hardware_sweeps, sweep_coordinates[:-1], strict=True):
                     result.append((sweep.parameter, value))
                 result.append((time_parameter, sweep_coordinates[-1]))
 
