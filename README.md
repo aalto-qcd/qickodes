@@ -5,7 +5,7 @@
 
 A [QCoDeS](https://github.com/microsoft/qcodes) driver for [QICK](https://github.com/openquantumhardware/qick). Usable but still under active development. Pull requests are welcome!
 
-Supports Python 3.9+
+Supports Python 3.10+
 
 ## Development goals
 
