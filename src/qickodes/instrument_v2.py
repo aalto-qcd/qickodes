@@ -352,7 +352,7 @@ class QickInstrument(Instrument):
                             mad_parameter = Parameter(name + "_mad")
                             result_parameters.append(mad_parameter)
                             meas.register_parameter(
-                                mad_parameter, setpoints, paramtype=paramtype_iq
+                                mad_parameter, setpoints, paramtype=paramtype
                             )
 
         self.snapshot(update=True)
