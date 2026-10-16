@@ -6,11 +6,7 @@ import qick.asm_v2
 import qick.qick_asm
 
 if TYPE_CHECKING:
-    from qickodes.channels_v2 import AdcChannel, DacChannel
-    from qickodes.envelope_base_v2 import DacEnvelope
     from qickodes.instrument_v2 import QickInstrument
-    from qickodes.pulse_base_v2 import DacPulse
-    from qickodes.readout_window_v2 import ReadoutWindow
 
 
 class AveragerProgram(qick.asm_v2.AveragerProgramV2):
