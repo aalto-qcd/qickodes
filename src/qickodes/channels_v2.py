@@ -76,6 +76,12 @@ class DacChannel(InstrumentChannel, ABC):
             The program to add this DAC to.
         """
 
+    def mixer_freq_mhz(self) -> float | None:
+        """Digital mixer frequency in MHz, or None if this DAC has no mixer. """
+        if not hasattr(self, "digital_mixer_freq"):
+            return None
+        return self.digital_mixer_freq.get() / 1e6
+
 
 class StandardDacChannel(DacChannel):
     """A non-frequency-multiplexed DAC channel.
@@ -101,10 +107,7 @@ class StandardDacChannel(DacChannel):
         program : AbsQickProgram
             The program to add this DAC to.
         """
-        if hasattr(self, "digital_mixer_freq"):
-            mixer_freq = self.digital_mixer_freq.get() / 1e6
-        else:
-            mixer_freq = None
+        mixer_freq = self.mixer_freq_mhz()
         program.declare_gen(self.channel_num, self.nqz.get(), mixer_freq)
 
 
@@ -181,10 +184,7 @@ class MultiplexedDacChannel(DacChannel):
         program : AbsQickProgram
             The program to add this DAC to.
         """
-        if hasattr(self, "digital_mixer_freq"):
-            mixer_freq = self.digital_mixer_freq.get() / 1e6
-        else:
-            mixer_freq = None
+        mixer_freq = self.mixer_freq_mhz()
         program.declare_gen(
             ch=self.channel_num,
             nqz=self.nqz.get(),
