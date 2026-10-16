@@ -10,7 +10,7 @@ Supports Python 3.11+
 ## Development goals
 
 - This should be a thin wrapper that directly exposes all features of QICK.
-- Pulses ("[`instructions`](https://github.com/aalto-qcd/qickodes/tree/main/qickodes/instructions)") and pulse sequences ("[`protocols`](https://github.com/aalto-qcd/qickodes/tree/main/qickodes/protocols)") should be parameterized such that they can be fully reproduced based on the [QCoDeS snapshot](https://microsoft.github.io/Qcodes/examples/DataSet/Working%20with%20snapshots.html) that gets saved with every dataset.
+- Pulses ("[`pulses_v2`](https://github.com/aalto-qcd/qickodes/tree/main/src/qickodes/pulses_v2)") and pulse sequences ("[`macros_v2`](https://github.com/aalto-qcd/qickodes/tree/main/src/qickodes/macros_v2)") should be parameterized such that they can be fully reproduced based on the [QCoDeS snapshot](https://microsoft.github.io/Qcodes/examples/DataSet/Working%20with%20snapshots.html) that gets saved with every dataset.
 
 ## Status between tProc v1 and v2
 
