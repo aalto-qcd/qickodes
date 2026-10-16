@@ -21,9 +21,11 @@ maintainers = [
 ]
 dependencies = [
     "geom-median",
+    "numpy",
     "pyro4",
     "qcodes",
     "qick>=0.2.255",
+    "tqdm",
 ]
 
 [project.urls]
