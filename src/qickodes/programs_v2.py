@@ -32,20 +32,14 @@ class AveragerProgram(qick.asm_v2.AveragerProgramV2):
     def _initialize(self, cfg: dict):  # noqa: ARG002
         macros = self.qick_instrument.macro_list
 
-        # remove duplicates from the set of objects to initialize
-        dacs: set[DacChannel] = set().union(*(m.dacs for m in macros))
-        adcs: set[AdcChannel] = set().union(*(m.adcs for m in macros))
-        envelopes: set[DacEnvelope] = set().union(*(m.envelopes for m in macros))
-        pulses: set[DacPulse | ReadoutWindow] = set().union(*(m.pulses for m in macros))
+        # Iterate in a fixed order
+        def unique_sorted(attr: str) -> list:
+            objects = set().union(*(getattr(m, attr) for m in macros))
+            return sorted(objects, key=lambda obj: obj.full_name)
 
-        for dac in dacs:
-            dac.initialize(self)
-        for adc in adcs:
-            adc.initialize(self)
-        for envelope in envelopes:
-            envelope.initialize(self)
-        for pulse in pulses:
-            pulse.initialize(self)
+        for attr in ("dacs", "adcs", "envelopes", "pulses"):
+            for obj in unique_sorted(attr):
+                obj.initialize(self)
 
         for name, count in self.hardware_loop_counts.items():
             self.add_loop(name, count)
