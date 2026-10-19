@@ -151,7 +151,7 @@ class QickInstrument(Instrument):
         self.ddr4_buffer = Ddr4Buffer(self, "ddr4_buffer")
         self.add_submodule("ddr4_buffer", self.ddr4_buffer)
 
-        self.macro_list = ChannelTuple(
+        self.macro_list = ChannelList(
             parent=self,
             name="macro_list",
             chan_type=Macro,
