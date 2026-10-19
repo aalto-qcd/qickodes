@@ -34,7 +34,9 @@ class PlayPulse(Macro):
         pulse: DacPulse,
         t: float | QickParam | Literal["auto"] = "auto",
     ) -> None:
-        assert pulse.parent.parent is parent
+        if pulse.parent.parent is not parent:
+            msg = f"Pulse {pulse.full_name} belongs to a different QickInstrument."
+            raise ValueError(msg)
         name = parent.append_counter_to_macro_name("PlayPulse")
         super().__init__(
             parent,

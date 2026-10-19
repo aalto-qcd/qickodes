@@ -48,9 +48,11 @@ class Trigger(Macro):
         ddr4: bool = False,
         mr: bool = False,
     ) -> None:
-        if isinstance(adcs, AdcChannel):
-            adcs = [adcs]
-        assert all(adc.parent is parent for adc in adcs)
+        adcs = [adcs] if isinstance(adcs, AdcChannel) else list(adcs)
+        foreign = [adc.full_name for adc in adcs if adc.parent is not parent]
+        if foreign:
+            msg = f"ADCs {foreign} belong to a different QickInstrument."
+            raise ValueError(msg)
         name = parent.append_counter_to_macro_name("Trigger")
         super().__init__(parent, name, adcs=adcs)
 

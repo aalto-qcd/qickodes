@@ -36,7 +36,9 @@ class ConfigReadout(Macro):
         window: ReadoutWindow,
         t: float | QickParam = 0,
     ) -> None:
-        assert window.parent.parent is parent
+        if window.parent.parent is not parent:
+            msg = f"Readout window {window.full_name} belongs to a different QickInstrument."
+            raise ValueError(msg)
         name = parent.append_counter_to_macro_name("ConfigReadout")
         super().__init__(parent, name, adcs=[window.parent], pulses=[window])
 
