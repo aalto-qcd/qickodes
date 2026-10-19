@@ -21,11 +21,13 @@ maintainers = [
 ]
 dependencies = [
     "geom-median",
+    "h5netcdf",
     "numpy",
     "pyro4",
     "qcodes>=0.41.0",
     "qick>=0.2.255",
     "tqdm",
+    "xarray",
 ]
 
 [project.urls]
