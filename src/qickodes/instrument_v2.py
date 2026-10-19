@@ -12,8 +12,8 @@ import qick
 import qick.asm_v2
 import qick.qick_asm
 import xarray as xr
-from qcodes.instrument import ChannelTuple, Instrument, InstrumentModule
-from qcodes.parameters import ManualParameter, Parameter
+from qcodes.instrument import ChannelList, ChannelTuple, Instrument, InstrumentModule
+from qcodes.parameters import ManualParameter, Parameter, ParameterBase
 from qcodes.validators import Enum, Ints
 from qick.asm_v2 import MultiplexedGenManager, QickProgramV2, StandardGenManager
 from qick.pyro import make_proxy
@@ -52,7 +52,7 @@ def _silence_paramtype_warning():
         def filter(self, record):
             return "already has paramtype" not in record.getMessage()
 
-    root = logging.getLogger("qcodes.parameters.parameter_base")
+    root = logging.getLogger(ParameterBase.__module__)
     log_filter = _Filter()
     root.addFilter(log_filter)
     try:
@@ -155,11 +155,12 @@ class QickInstrument(Instrument):
             parent=self,
             name="macro_list",
             chan_type=Macro,
-            chan_list=[],
         )
         self.add_submodule("macro_list", self.macro_list)
 
         # Counters to make sure every Macro in the macro_list has a unique name
+        # Deliberately never reset: macros can be reused across set_macro_list()
+        # calls, so restarting the count could produce duplicate names.
         self.macro_name_counter: dict[str, int] = {}
 
         self.hard_avgs = ManualParameter(
@@ -216,15 +217,8 @@ class QickInstrument(Instrument):
         Args: `Macro` type objects such as `PlayPulse`, `DelayAuto`,
         `Trigger`.
         """
-        del self.submodules["macro_list"]
-        del self._channel_lists["macro_list"]
-        self.macro_list = ChannelTuple(
-            parent=self,
-            name="macro_list",
-            chan_type=Macro,
-            chan_list=macro_list,
-        )
-        self.add_submodule("macro_list", self.macro_list)
+        self.macro_list.clear()
+        self.macro_list.extend(macro_list)
 
     def get_idn(self) -> dict[str, str | None]:
         return {
