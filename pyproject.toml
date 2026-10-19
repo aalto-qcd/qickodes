@@ -23,7 +23,7 @@ dependencies = [
     "geom-median",
     "numpy",
     "pyro4",
-    "qcodes",
+    "qcodes>=0.41.0",
     "qick>=0.2.255",
     "tqdm",
 ]
