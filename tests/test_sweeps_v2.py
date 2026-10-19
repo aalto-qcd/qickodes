@@ -51,7 +51,7 @@ def test_software_sweep_multiple_parameters_share_units():
 def test_software_sweep_mismatched_units():
     a = ManualParameter("a", unit="Hz")
     b = ManualParameter("b", unit="V")
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError, match="same unit"):
         SoftwareSweep([a, b], 0, 1, 5)
 
 

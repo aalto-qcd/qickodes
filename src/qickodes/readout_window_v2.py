@@ -30,7 +30,9 @@ class ReadoutWindow(InstrumentModule):
         parent: AdcChannel,
         name: str,
     ) -> None:
-        assert parent.tproc_controlled.get()
+        if not parent.tproc_controlled.get():
+            msg = f"ReadoutWindow requires a tProc-controlled ADC, {parent.full_name} is not."
+            raise ValueError(msg)
         super().__init__(parent, name)
 
         self.freq = SweepableParameter(

@@ -132,7 +132,14 @@ class CorrectedConstantPulse(DacPulse):
                 xp=self.correctable_freqs.get(),
                 fp=self.phase_offsets.get(),
             )
-        assert abs(self.gain.get() * gain_factor) <= 1
+        corrected_gain = self.gain.get() * gain_factor
+        if abs(corrected_gain) > 1:
+            msg = (
+                f"Corrected gain of {self.full_name} is {corrected_gain:.3f} at "
+                f"{self.freq.get() / 1e9:.6f} GHz (gain {self.gain.get()} times "
+                f"correction factor {gain_factor:.3f}), but must be within [-1, 1]."
+            )
+            raise ValueError(msg)
         program.add_pulse(
             ch=self.parent.channel_num,
             name=self.short_name,

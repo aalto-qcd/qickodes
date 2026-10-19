@@ -40,7 +40,12 @@ class FlatTopPulse(DacPulse):
         name: str,
         envelope: DacEnvelope,
     ) -> None:
-        assert envelope.parent is parent
+        if envelope.parent is not parent:
+            msg = (
+                f"Envelope {envelope.full_name} belongs to {envelope.parent.full_name}, "
+                f"but the pulse is being created on {parent.full_name}."
+            )
+            raise ValueError(msg)
         super().__init__(parent, name)
         self.envelope = envelope
 

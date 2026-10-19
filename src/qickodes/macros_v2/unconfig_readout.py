@@ -33,7 +33,9 @@ class UnconfigReadout(Macro):
         adc: AdcChannel,
         t: float | QickParam = 0,
     ) -> None:
-        assert adc.parent is parent
+        if adc.parent is not parent:
+            msg = f"ADC {adc.full_name} belongs to a different QickInstrument."
+            raise ValueError(msg)
         name = parent.append_counter_to_macro_name("UnconfigReadout")
         super().__init__(parent, name, adcs=[adc])
 
