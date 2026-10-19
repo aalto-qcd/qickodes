@@ -2031,14 +2031,19 @@ wheels = [
 
 [[package]]
 name = "qickodes"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "." }
 dependencies = [
     { name = "geom-median" },
+    { name = "h5netcdf" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pyro4" },
     { name = "qcodes", version = "0.58.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "qcodes", version = "0.61.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "qick" },
+    { name = "tqdm" },
+    { name = "xarray" },
 ]
 
 [package.optional-dependencies]
@@ -2049,10 +2054,14 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "geom-median" },
+    { name = "h5netcdf" },
+    { name = "numpy" },
     { name = "pyro4" },
     { name = "pytest", marker = "extra == 'test'" },
-    { name = "qcodes" },
+    { name = "qcodes", specifier = ">=0.41.0" },
     { name = "qick", specifier = ">=0.2.255" },
+    { name = "tqdm" },
+    { name = "xarray" },
 ]
 provides-extras = ["test"]
 
