@@ -249,7 +249,7 @@ class QickInstrument(Instrument):
             raise ValueError(msg)
         if len(self.macro_list) == 0:
             msg = (
-                "`macro_list` is empty. Please define the sequence with"
+                "`macro_list` is empty. Please define the sequence with "
                 "`QickInstrument.set_macro_list([...])` before running the measurement."
             )
             raise RuntimeError(msg)

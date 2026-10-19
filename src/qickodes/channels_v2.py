@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     import qick.asm_v2
     from qick.asm_v2 import QickParam
 
-    from qickodes.instruments_v2 import QickInstrument
+    from qickodes.instrument_v2 import QickInstrument
 
 
 class DacChannel(InstrumentChannel, ABC):
@@ -302,11 +302,11 @@ class AdcChannel(InstrumentChannel):
         Parameters
         ----------
         program : qick.asm_v2.QickProgramV2
-              The program to add to the readout config.
+            The program to add the readout config to.
         name : str
-              Name of the readout config within the program.
+            Name of the readout config within the program.
         freq : float | QickParam
-              Downconversion frequency in MHz, as QICK expects it.
+            Downconversion frequency in MHz, as QICK expects it.
         """
         # Older QICK versions (<0.2.436) fail on gen_ch=None, so only pass it when set.
         # See https://github.com/openquantumhardware/qick/pull/436 for more details.
