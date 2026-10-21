@@ -65,22 +65,3 @@ class MuxedConstantPulse(DacPulse):
             length=self.length.qick_param * 1e6,
             mask=self.tone_nums.get(),
         )
-
-    def copy(
-        self, name: str, parent: MultiplexedDacChannel | None = None
-    ) -> MuxedConstantPulse:
-        """Make a copy of this pulse.
-
-        Parameters
-        ----------
-        name : str
-            Name for the new pulse.
-        parent : MultiplexedDacChannel, optional
-            Specify a different DAC for the copied pulse.
-        """
-        if parent is None:
-            parent = self.parent
-        new_pulse = MuxedConstantPulse(parent, name)
-        new_pulse.length.set(self.length.get())
-        new_pulse.tone_nums.set(self.tone_nums.get())
-        return new_pulse
