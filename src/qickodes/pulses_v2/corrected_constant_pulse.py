@@ -153,30 +153,3 @@ class CorrectedConstantPulse(DacPulse):
             stdysel={False: "zero", True: "last"}[self.hold_last_sample.get()],
             mode={False: "oneshot", True: "periodic"}[self.periodic.get()],
         )
-
-    def copy(
-        self, name: str, parent: DacChannel | None = None
-    ) -> CorrectedConstantPulse:
-        """Make a copy of this pulse.
-
-        Parameters
-        ----------
-        name : str
-            Name for the new pulse.
-        parent : DacChannel, optional
-            Specify a different DAC for the copied pulse.
-        """
-        if parent is None:
-            parent = self.parent
-        new_pulse = CorrectedConstantPulse(parent, name)
-        new_pulse.freq.set(self.freq.get())
-        new_pulse.phase.set(self.phase.get())
-        new_pulse.gain.set(self.gain.get())
-        new_pulse.length.set(self.length.get())
-        new_pulse.reset_phase.set(self.reset_phase.get())
-        new_pulse.hold_last_sample.set(self.hold_last_sample.get())
-        new_pulse.periodic.set(self.periodic.get())
-        new_pulse.correctable_freqs.set(self.correctable_freqs.get())
-        new_pulse.gain_factors.set(self.gain_factors.get())
-        new_pulse.phase_offsets.set(self.phase_offsets.get())
-        return new_pulse

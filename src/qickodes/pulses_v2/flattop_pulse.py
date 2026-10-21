@@ -104,6 +104,9 @@ class FlatTopPulse(DacPulse):
             docstring="If True, the last calculated sample of the pulse is output continuously after the pulse.",
         )
 
+    def _copy_args(self) -> tuple:
+        return (self.envelope,)
+
     def initialize(self, program: qick.asm_v2.QickProgramV2) -> None:
         """Add this pulse to the program's pulse library.
 
@@ -125,24 +128,3 @@ class FlatTopPulse(DacPulse):
             stdysel={False: "zero", True: "last"}[self.hold_last_sample.get()],
             envelope=self.envelope_name.get(),
         )
-
-    def copy(self, name: str, parent: DacChannel | None = None) -> FlatTopPulse:
-        """Make a copy of this pulse.
-
-        Parameters
-        ----------
-        name : str
-            Name for the new pulse.
-        parent : DacChannel, optional
-            Specify a different DAC for the copied pulse.
-        """
-        if parent is None:
-            parent = self.parent
-        new_pulse = FlatTopPulse(parent, name, self.envelope)
-        new_pulse.freq.set(self.freq.get())
-        new_pulse.phase.set(self.phase.get())
-        new_pulse.gain.set(self.gain.get())
-        new_pulse.reset_phase.set(self.reset_phase.get())
-        new_pulse.hold_last_sample.set(self.hold_last_sample.get())
-        new_pulse.length.set(self.length.get())
-        return new_pulse
