@@ -98,9 +98,11 @@ class SweepableParameter(Parameter):
 
         return value
 
-    def snapshot_base(self, update: bool | None = True,
-                      params_to_skip_update: Sequence[str] | None = None,
-        ) -> dict[str, Any]:
+    def snapshot_base(
+        self,
+        update: bool | None = True,
+        params_to_skip_update: Sequence[str] | None = None,
+    ) -> dict[str, Any]:
         snap = super().snapshot_base(update, params_to_skip_update)
         # QickParam has no JSON representation; store its sweep definition here
         for key in ("value", "raw_value"):
