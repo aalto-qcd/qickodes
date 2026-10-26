@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from qcodes.instrument import InstrumentModule
 from qcodes.parameters import Parameter
@@ -9,6 +9,8 @@ from qcodes.validators import Enum, MultiType, Numbers, Validator
 from qick.asm_v2 import QickParam
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from qcodes.instrument import InstrumentBase
 
     from qickodes.instrument_v2 import QickInstrument
@@ -95,3 +97,14 @@ class SweepableParameter(Parameter):
                 value = value.start
 
         return value
+
+    def snapshot_base(self, update: bool | None = True,
+                      params_to_skip_update: Sequence[str] | None = None,
+        ) -> dict[str, Any]:
+        snap = super().snapshot_base(update, params_to_skip_update)
+        # QickParam has no JSON representation; store its sweep definition here
+        for key in ("value", "raw_value"):
+            v = snap.get(key)
+            if isinstance(v, QickParam):
+                snap[key] = {"start": v.start, "spans": dict(v.spans)}
+        return snap
