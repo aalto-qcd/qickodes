@@ -22,4 +22,8 @@ jobs:
 
       - name: Push to GitLab
         run: |
-          git push gitlab "${GITHUB_REF}"
+          if [[ "${GITHUB_REF}" == refs/heads/* ]]; then
+            git push --force gitlab "${GITHUB_REF}"
+          else
+            git push gitlab "${GITHUB_REF}"
+          fi
