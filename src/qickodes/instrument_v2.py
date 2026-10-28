@@ -238,6 +238,7 @@ class QickInstrument(Instrument):
         state_classifier: Callable[[np.ndarray], np.ndarray] | None = None,
         save_shots_as_npy: bool = False,
         inner_progress: bool = False,
+        progress_label: str | None = None,
     ) -> int:
         if acquisition_mode not in get_args(AcquisitionMode):
             msg = f"Unknown acquisition_mode {acquisition_mode!r}. Valid modes: {', '.join(map(repr, get_args(AcquisitionMode)))}."
@@ -413,6 +414,7 @@ class QickInstrument(Instrument):
                         software_sweep_indices=indices,
                         progress=inner_progress,
                     )
+                        *software_sweep_ranges, desc=progress_label
 
         return datasaver.run_id
 
