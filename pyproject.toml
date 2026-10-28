@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qickodes"
-version = "0.2.1"
+version = "0.2.18"
 description = "QCoDeS driver for QICK"
 readme = "README.md"
 requires-python = ">=3.11"
