@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import itertools
 import logging
 from collections.abc import Callable, Sequence
@@ -59,6 +60,17 @@ def _silence_paramtype_warning():
         yield
     finally:
         root.removeFilter(log_filter)
+
+
+@contextmanager
+def _qick_progress_options(**tqdm_kwargs):
+    """Temporarily preset tqdm options for the progress bars that qick creates."""
+    original = qick.qick_asm.tqdm
+    qick.qick_asm.tqdm = functools.partial(original, **tqdm_kwargs)
+    try:
+        yield
+    finally:
+        qick.qick_asm.tqdm = original
 
 
 class SoftwareSweep:
@@ -393,28 +405,30 @@ class QickInstrument(Instrument):
                 software_sweep_ranges = [
                     range(len(sweep.values)) for sweep in software_sweeps
                 ]
-                for indices in tqdm_product(*software_sweep_ranges):
-                    # update the software sweep parameters
-                    for sweep, index in zip(software_sweeps, indices, strict=True):
-                        for parameter in sweep.parameters:
-                            parameter.set(sweep.values[index])
-
-                    self._run_hardware_loops(
-                        datasaver,
-                        software_sweeps,
-                        shot_parameter,
-                        hardware_loop_counts,
-                        hardware_sweep_parameters,
-                        time_parameter,
-                        result_parameters,
-                        acquisition_mode,
-                        num_states,
-                        state_classifier,
-                        save_shots_as_npy,
-                        software_sweep_indices=indices,
-                        progress=inner_progress,
-                    )
+                with _qick_progress_options(leave=False):
+                    for indices in tqdm_product(
                         *software_sweep_ranges, desc=progress_label
+                    ):
+                        # update the software sweep parameters
+                        for sweep, index in zip(software_sweeps, indices, strict=True):
+                            for parameter in sweep.parameters:
+                                parameter.set(sweep.values[index])
+
+                        self._run_hardware_loops(
+                            datasaver,
+                            software_sweeps,
+                            shot_parameter,
+                            hardware_loop_counts,
+                            hardware_sweep_parameters,
+                            time_parameter,
+                            result_parameters,
+                            acquisition_mode,
+                            num_states,
+                            state_classifier,
+                            save_shots_as_npy,
+                            software_sweep_indices=indices,
+                            progress=inner_progress,
+                        )
 
         return datasaver.run_id
 
