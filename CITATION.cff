@@ -16,7 +16,7 @@ authors:
   - family-names: Möttönen
     given-names: Mikko
     orcid: "https://orcid.org/0000-0001-5084-2298"
-version: 0.2.1
+version: 0.2.18
 date-released: "2026-10-09"
 license: MIT
 repository-code: "https://github.com/aalto-qcd/qickodes"
