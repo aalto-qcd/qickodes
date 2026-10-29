@@ -15,7 +15,7 @@ import qick.qick_asm
 import xarray as xr
 from qcodes.instrument import ChannelList, ChannelTuple, Instrument, InstrumentModule
 from qcodes.parameters import ManualParameter, Parameter, ParameterBase
-from qcodes.validators import Enum, Ints
+from qcodes.validators import Bool, Enum, Ints
 from qick.asm_v2 import MultiplexedGenManager, QickProgramV2, StandardGenManager
 from qick.pyro import make_proxy
 from tqdm.contrib.itertools import product as tqdm_product
@@ -212,6 +212,13 @@ class QickInstrument(Instrument):
             unit="sec",
             initial_value=1e-6,
             min_value=0,
+        )
+        self.fast_decimated = ManualParameter(
+            name="fast_decimated",
+            instrument=self,
+            label="Skip redundant per-round board calls in decimated acquisitions",
+            vals=Bool(),
+            initial_value=False,
         )
 
     def append_counter_to_macro_name(self, name: str) -> str:
@@ -460,6 +467,10 @@ class QickInstrument(Instrument):
                 soc=self.soc,
                 rounds=self.soft_avgs.get(),
                 progress=progress,
+                extra_args={
+                    "fast_rounds": self.fast_decimated.get(),
+                    "keep_accumulated": save_shots_as_npy,
+                },
             )
             for channel_index in range(len(reads_per_shot)):
                 channel_iq = all_iq[channel_index]
