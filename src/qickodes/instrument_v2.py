@@ -521,6 +521,7 @@ class QickInstrument(Instrument):
                 time_parameter,
                 result_parameters,
                 acquisition_mode,
+                software_sweep_indices,
             )
 
         if save_shots_as_npy:
@@ -562,6 +563,7 @@ class QickInstrument(Instrument):
             "ddr4",
             "decimated",
         ],
+        software_sweep_indices: Sequence[int] = (),
     ) -> None:
         ddr4_channel = self.ddr4_buffer.selected_adc_channel.get()
         ddr4_num_transfers = self.ddr4_buffer.num_transfers.get()
@@ -630,13 +632,26 @@ class QickInstrument(Instrument):
                             )
                         else:
                             save_dir = Path(save_dir)
+                            if software_sweep_indices:
+                                # one folder per run, one file per software-sweep
+                                save_dir = save_dir / str(datasaver.run_id)
+                                name = "_".join(map(str, software_sweep_indices))
+                            else:
+                                name = str(datasaver.run_id)
                             save_dir.mkdir(parents=True, exist_ok=True)
-                            path = Path(save_dir) / f"{datasaver.run_id}.nc"
+                            path = save_dir / f"{name}.nc"
+                            n_sw = len(software_sweep_indices)
                             xr.Dataset(
                                 {"i": ("time", raw[:, 0]), "q": ("time", raw[:, 1])},
                                 coords={"time": ("time", time, {"units": "s"})},
+                                attrs={p.full_name: v for p, v in param_values[:n_sw]},
                             ).to_netcdf(path, engine="h5netcdf")
-                            datasaver.dataset.add_metadata("ddr4_file", str(path))
+                            if n_sw:
+                                datasaver.dataset.add_metadata(
+                                    "ddr4_dir", str(save_dir)
+                                )
+                            else:
+                                datasaver.dataset.add_metadata("ddr4_file", str(path))
                     result_index += 1
                 else:
                     raise NotImplementedError
