@@ -633,7 +633,7 @@ class QickInstrument(Instrument):
                         else:
                             save_dir = Path(save_dir)
                             if software_sweep_indices:
-                                # one folder per run, one file per software-sweep
+                                # one folder per run, one file per software-sweep point
                                 save_dir = save_dir / str(datasaver.run_id)
                                 name = "_".join(map(str, software_sweep_indices))
                             else:
