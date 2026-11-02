@@ -625,7 +625,12 @@ class QickInstrument(Instrument):
                         nb = self.ddr4_buffer.n_block.get()
                         if nb > 1:
                             n = len(time) // nb * nb
-                            raw = raw[:n].reshape(-1, nb, 2).mean(axis=1, dtype=np.float64).astype(np.float32)
+                            raw = (
+                                raw[:n]
+                                .reshape(-1, nb, 2)
+                                .mean(axis=1, dtype=np.float64)
+                                .astype(np.float32)
+                            )
                             time = time[:n].reshape(-1, nb).mean(axis=1)
                         save_dir = self.ddr4_buffer.save_dir.get()
                         if save_dir is None:
