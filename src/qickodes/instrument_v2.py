@@ -622,6 +622,11 @@ class QickInstrument(Instrument):
                         assert time_parameter is not None
                         raw = self.soc.get_ddr4(ddr4_num_transfers)
                         time = program.get_time_axis_ddr4(ddr4_channel, raw[:, 0]) / 1e6
+                        nb = self.ddr4_buffer.n_block.get()
+                        if nb > 1:
+                            n = len(time) // nb * nb
+                            raw = raw[:n].reshape(-1, nb, 2).mean(axis=1, dtype=np.float64).astype(np.float32)
+                            time = time[:n].reshape(-1, nb).mean(axis=1)
                         save_dir = self.ddr4_buffer.save_dir.get()
                         if save_dir is None:
                             iq = (raw[:, 0] + 1j * raw[:, 1]).astype(np.complex64)
@@ -759,6 +764,13 @@ class Ddr4Buffer(InstrumentModule):
             label="Directory for DDR4 records (None: store in the QCoDeS database)",
             initial_value=None,
             set_cmd=None,
+        )
+        self.n_block = ManualParameter(
+            name="n_block",
+            instrument=self,
+            label="Number of DDR4 samples averaged into one saved sample",
+            vals=Ints(min_value=1),
+            initial_value=1,
         )
 
     def arm(self):
