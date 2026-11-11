@@ -92,7 +92,7 @@ Albanese and Mikko Möttönen.
 
 If you use QICKoDeS in your research, please cite it via its DOI:
 
-> Sunada, Y., Panigrahi, A., & Albanese, J., & Möttönen, M. *QICKoDeS: A QCoDeS driver for QICK*. Zenodo: https://doi.org/10.5281/zenodo.21066164
+> Sunada, Y., Panigrahi, A., Albanese, J., & Möttönen, M. *QICKoDeS: A QCoDeS driver for QICK*. Zenodo: https://doi.org/10.5281/zenodo.23350958
 
 BibTeX entry:
 ```bibtex
@@ -101,7 +101,7 @@ author = {Sunada, Yoshiki and Panigrahi, Ashish and Albanese, Jonatan and Mött�
 title = {{QICKoDeS}: A {QCoDeS} driver for {QICK}},
 doi = {10.5281/zenodo.21066164},
 title = {{qickodes}},
-url = {https://doi.org/10.5281/zenodo.21066164},
+url = {https://doi.org/10.5281/zenodo.23350958},
 year = {2026},
 }
 ```
