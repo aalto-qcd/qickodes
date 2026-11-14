@@ -532,6 +532,7 @@ class QickInstrument(Instrument):
                 time_parameter,
                 result_parameters,
                 acquisition_mode,
+                software_sweep_indices,
             )
 
         if save_shots_as_npy:
@@ -573,6 +574,7 @@ class QickInstrument(Instrument):
             "ddr4",
             "decimated",
         ],
+        software_sweep_indices: Sequence[int] = (),
     ) -> None:
         ddr4_channel = self.ddr4_buffer.selected_adc_channel.get()
         ddr4_num_transfers = self.ddr4_buffer.num_transfers.get()
@@ -631,6 +633,16 @@ class QickInstrument(Instrument):
                         assert time_parameter is not None
                         raw = self.soc.get_ddr4(ddr4_num_transfers)
                         time = program.get_time_axis_ddr4(ddr4_channel, raw[:, 0]) / 1e6
+                        nb = self.ddr4_buffer.n_block.get()
+                        if nb > 1:
+                            n = len(time) // nb * nb
+                            raw = (
+                                raw[:n]
+                                .reshape(-1, nb, 2)
+                                .mean(axis=1, dtype=np.float64)
+                                .astype(np.float32)
+                            )
+                            time = time[:n].reshape(-1, nb).mean(axis=1)
                         save_dir = self.ddr4_buffer.save_dir.get()
                         if save_dir is None:
                             iq = (raw[:, 0] + 1j * raw[:, 1]).astype(np.complex64)
@@ -641,13 +653,26 @@ class QickInstrument(Instrument):
                             )
                         else:
                             save_dir = Path(save_dir)
+                            if software_sweep_indices:
+                                # one folder per run, one file per software-sweep point
+                                save_dir = save_dir / str(datasaver.run_id)
+                                name = "_".join(map(str, software_sweep_indices))
+                            else:
+                                name = str(datasaver.run_id)
                             save_dir.mkdir(parents=True, exist_ok=True)
-                            path = Path(save_dir) / f"{datasaver.run_id}.nc"
+                            path = save_dir / f"{name}.nc"
+                            n_sw = len(software_sweep_indices)
                             xr.Dataset(
                                 {"i": ("time", raw[:, 0]), "q": ("time", raw[:, 1])},
                                 coords={"time": ("time", time, {"units": "s"})},
+                                attrs={p.full_name: v for p, v in param_values[:n_sw]},
                             ).to_netcdf(path, engine="h5netcdf")
-                            datasaver.dataset.add_metadata("ddr4_file", str(path))
+                            if n_sw:
+                                datasaver.dataset.add_metadata(
+                                    "ddr4_dir", str(save_dir)
+                                )
+                            else:
+                                datasaver.dataset.add_metadata("ddr4_file", str(path))
                     result_index += 1
                 else:
                     raise NotImplementedError
@@ -755,6 +780,13 @@ class Ddr4Buffer(InstrumentModule):
             label="Directory for DDR4 records (None: store in the QCoDeS database)",
             initial_value=None,
             set_cmd=None,
+        )
+        self.n_block = ManualParameter(
+            name="n_block",
+            instrument=self,
+            label="Number of DDR4 samples averaged into one saved sample",
+            vals=Ints(min_value=1),
+            initial_value=1,
         )
 
     def arm(self):
