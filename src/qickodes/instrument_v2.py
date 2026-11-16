@@ -6,6 +6,7 @@ import logging
 from collections.abc import Callable, Sequence
 from contextlib import contextmanager
 from pathlib import Path
+from time import monotonic, sleep
 from typing import TYPE_CHECKING, Literal, get_args
 
 import numpy as np
@@ -43,6 +44,11 @@ AcquisitionMode = Literal[
     "decimated",
     "state population",
 ]
+
+# API version of board/qickodes_board.py that this qickodes expects
+_BOARD_API_VERSION = 1
+# Largest DDR4 result fetched in one go (raw int16 or decimated float32)
+_MAX_DDR4_FETCH_BYTES = 512 * 2**20
 
 
 @contextmanager
@@ -575,8 +581,6 @@ class QickInstrument(Instrument):
         ],
     ) -> None:
         ddr4_channel = self.ddr4_buffer.selected_adc_channel.get()
-        ddr4_num_transfers = self.ddr4_buffer.num_transfers.get()
-
         reads_per_shot = [ro["trigs"] for ro in program.ro_chs.values()]
         result_index = 0
         for channel_index in range(len(reads_per_shot)):
@@ -629,23 +633,25 @@ class QickInstrument(Instrument):
                 elif acquisition_mode == "ddr4":
                     if channel_num == ddr4_channel:
                         assert time_parameter is not None
-                        raw = self.soc.get_ddr4(ddr4_num_transfers)
-                        time = program.get_time_axis_ddr4(ddr4_channel, raw[:, 0]) / 1e6
+                        self.ddr4_buffer.wait_for_record()
+                        iq, dt = self.ddr4_buffer.fetch()
+                        time = np.arange(len(iq)) * dt
                         save_dir = self.ddr4_buffer.save_dir.get()
                         if save_dir is None:
-                            iq = (raw[:, 0] + 1j * raw[:, 1]).astype(np.complex64)
+                            iq_complex = (iq[:, 0] + 1j * iq[:, 1]).astype(np.complex64)
                             datasaver.add_result(
                                 *param_values,
                                 (time_parameter, time),
-                                (result_parameters[result_index], iq),
+                                (result_parameters[result_index], iq_complex),
                             )
                         else:
                             save_dir = Path(save_dir)
                             save_dir.mkdir(parents=True, exist_ok=True)
-                            path = Path(save_dir) / f"{datasaver.run_id}.nc"
+                            path = save_dir / f"{datasaver.run_id}.nc"
                             xr.Dataset(
-                                {"i": ("time", raw[:, 0]), "q": ("time", raw[:, 1])},
+                                {"i": ("time", iq[:, 0]), "q": ("time", iq[:, 1])},
                                 coords={"time": ("time", time, {"units": "s"})},
+                                attrs={"decimation": self.ddr4_buffer.decimation.get()},
                             ).to_netcdf(path, engine="h5netcdf")
                             datasaver.dataset.add_metadata("ddr4_file", str(path))
                     result_index += 1
@@ -720,8 +726,9 @@ class Ddr4Buffer(InstrumentModule):
     def __init__(self, parent: QickInstrument, name: str) -> None:
         super().__init__(parent, name)
 
+        ddr4_cfg = self.parent.soccfg["ddr4_buf"]
         all_avgbufs = [adc.avgbuf_fullpath.get() for adc in parent.adcs]
-        wired_avgbufs = self.parent.soccfg["ddr4_buf"]["readouts"]
+        wired_avgbufs = ddr4_cfg["readouts"]
 
         self.wired_adc_channels = Parameter(
             name="wired_adc_channels",
@@ -740,12 +747,21 @@ class Ddr4Buffer(InstrumentModule):
             name="samples_per_transfer",
             instrument=self,
             label="Number of samples in a chunk of data transfer from the decimated stream to this DDR4 buffer. The sample rate is the fabric clock frequency of the ADC.",
-            initial_cache_value=self.parent.soccfg["ddr4_buf"]["burst_len"],
+            initial_cache_value=ddr4_cfg["burst_len"],
         )
         self.num_transfers = ManualParameter(
             name="num_transfers",
             instrument=self,
             label="Duration of data acquisition expressed as the number of data transfers",
+            vals=Ints(
+                min_value=1, max_value=ddr4_cfg["maxlen"] // ddr4_cfg["burst_len"]
+            ),
+            initial_value=1,
+        )
+        self.decimation = ManualParameter(
+            name="decimation",
+            instrument=self,
+            label="Number of consecutive DDR4 samples averaged into one output sample (boxcar)",
             vals=Ints(min_value=1),
             initial_value=1,
         )
@@ -756,9 +772,133 @@ class Ddr4Buffer(InstrumentModule):
             initial_value=None,
             set_cmd=None,
         )
-
-    def arm(self):
-        """Get ready to be triggered."""
-        self.parent.soc.arm_ddr4(
-            self.selected_adc_channel.get(), self.num_transfers.get()
+        self.board_api_version = Parameter(
+            name="board_api_version",
+            instrument=self,
+            label="API version of the board-side qickodes module (None: plain QickSoc server)",
+            initial_cache_value=self._query_board_api_version(),
         )
+        self._armed_num_transfers: int | None = None
+
+    def _query_board_api_version(self) -> int | None:
+        try:
+            version = int(self.parent.soc.qickodes_board_api_version())
+        except AttributeError:
+            return None
+        if version != _BOARD_API_VERSION:
+            msg = (
+                f"The board runs qickodes_board API version {version}, but this "
+                f"qickodes expects {_BOARD_API_VERSION}. Update "
+                "board/qickodes_board.py on the board and restart the Pyro server."
+            )
+            raise RuntimeError(msg)
+        return version
+
+    def sample_rate(self) -> float:
+        """Rate (Hz) at which the DDR4 buffer stores samples (ADC fabric clock)."""
+        return self.parent.adcs[self.selected_adc_channel.get()].f_fabric.get()
+
+    def record_duration(self, num_transfers: int | None = None) -> float:
+        """Length (s) of a record of `num_transfers` (default: the parameter)."""
+        if num_transfers is None:
+            num_transfers = self.num_transfers.get()
+        return num_transfers * self.samples_per_transfer.get() / self.sample_rate()
+
+    def _require_armed(self) -> int:
+        if self._armed_num_transfers is None:
+            msg = "The DDR4 buffer has not been armed; call arm() first."
+            raise RuntimeError(msg)
+        return self._armed_num_transfers
+
+    def arm(self) -> None:
+        """Get ready to be triggered."""
+        channel = self.selected_adc_channel.get()
+        num_transfers = self.num_transfers.get()
+        if self.board_api_version.get() is None:
+            self.parent.soc.arm_ddr4(channel, num_transfers)
+        else:
+            self.parent.soc.arm_ddr4_with_sentinel(channel, num_transfers)
+        self._armed_num_transfers = num_transfers
+
+    def wait_for_record(self, poll_interval: float = 0.05) -> None:
+        """Block until the armed record is complete.
+
+        Call this after the program that triggers the DDR4 buffer has returned.
+        """
+        num_transfers = self._require_armed()
+        duration = self.record_duration(num_transfers)
+        if self.board_api_version.get() is None:
+            # No completion flag: the trigger fired before the program
+            # returned, so the record ends at most `duration` from now.
+            sleep(duration)
+            return
+        deadline = monotonic() + duration + 1.0
+        while not self.parent.soc.ddr4_record_done(num_transfers):
+            if monotonic() > deadline:
+                msg = (
+                    f"The DDR4 record ({duration:.3f} s) did not complete. Either "
+                    "the program never triggered the DDR4 buffer (Trigger(..., "
+                    "ddr4=True)) or the input is hard-saturated."
+                )
+                raise RuntimeError(msg)
+            sleep(poll_interval)
+
+    def fetch(self, use_board: bool | None = None) -> tuple[np.ndarray, float]:
+        """Read the armed record, boxcar-averaged by `decimation`.
+
+        Parameters
+        ----------
+        use_board : bool, optional
+            Average on the board (True) or on this PC (False). By default on
+            the board if its Pyro server runs qickodes_board.
+
+        Returns
+        -------
+        iq : np.ndarray
+            Shape (n, 2): raw int16 samples if decimation == 1, otherwise
+            float32 block means.
+        dt : float
+            Sample spacing of `iq` in seconds.
+        """
+        num_transfers = self._require_armed()
+        factor = self.decimation.get()
+        cfg = self.parent.soccfg["ddr4_buf"]
+        n_out = (num_transfers * cfg["burst_len"] - cfg.get("junk_len", 0)) // factor
+        n_bytes = n_out * (4 if factor == 1 else 8)
+        if n_bytes > _MAX_DDR4_FETCH_BYTES:
+            msg = (
+                f"The record would be {n_bytes / 2**20:.0f} MiB after decimation "
+                f"by {factor}; increase ddr4_buffer.decimation."
+            )
+            raise ValueError(msg)
+        if use_board is None:
+            use_board = self.board_api_version.get() is not None
+        if use_board and self.board_api_version.get() is None:
+            msg = "The board's Pyro server does not run qickodes_board."
+            raise RuntimeError(msg)
+
+        if factor == 1:
+            iq = self.parent.soc.get_ddr4(num_transfers)
+        elif use_board:
+            iq = self.parent.soc.get_ddr4_decimated(num_transfers, factor)
+        else:
+            iq = self._decimate_on_pc(num_transfers, factor)
+        return np.asarray(iq), factor / self.sample_rate()
+
+    def _decimate_on_pc(
+        self, num_transfers: int, factor: int, chunk_samples: int = 1 << 24
+    ) -> np.ndarray:
+        """Fetch the record in chunks (similar to board-side averaging)."""
+        cfg = self.parent.soccfg["ddr4_buf"]
+        burst = cfg["burst_len"]
+        start = cfg.get("junk_len", 0)
+        n_blocks = (num_transfers * burst - start) // factor
+        out = np.empty((n_blocks, 2), dtype=np.float32)
+        blocks_per_chunk = max(1, chunk_samples // factor)
+        for b0 in range(0, n_blocks, blocks_per_chunk):
+            b1 = min(b0 + blocks_per_chunk, n_blocks)
+            n = (b1 - b0) * factor
+            raw = self.parent.soc.get_ddr4(-(-n // burst), start=start + b0 * factor)
+            iq = np.asarray(raw)[:n].reshape(b1 - b0, factor, 2)
+            out[b0:b1] = iq.sum(axis=1, dtype=np.int64) / factor
+        return out
