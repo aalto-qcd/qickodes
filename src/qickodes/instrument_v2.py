@@ -4,16 +4,15 @@ import functools
 import itertools
 import logging
 from collections.abc import Callable, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
-from time import monotonic, sleep
+from time import monotonic, sleep, time_ns
 from typing import TYPE_CHECKING, Literal, get_args
 
 import numpy as np
 import qick
 import qick.asm_v2
 import qick.qick_asm
-import xarray as xr
 from qcodes.instrument import ChannelList, ChannelTuple, Instrument, InstrumentModule
 from qcodes.parameters import ManualParameter, Parameter, ParameterBase
 from qcodes.validators import Bool, Enum, Ints
@@ -27,6 +26,7 @@ from qickodes.channels_v2 import (
     MultiplexedDacChannel,
     StandardDacChannel,
 )
+from qickodes.ddr4_file import Ddr4File
 from qickodes.geometric_median import geometric_median
 from qickodes.macro_base_v2 import Macro
 from qickodes.parameters_v2 import SweepableParameter
@@ -397,7 +397,12 @@ class QickInstrument(Instrument):
 
         self.snapshot(update=True)
 
-        with meas.run() as datasaver:
+        with (
+            meas.run() as datasaver,
+            self._open_ddr4_file(
+                datasaver, software_sweeps, acquisition_mode
+            ) as ddr4_file,
+        ):
             if len(software_sweeps) == 0:
                 self._run_hardware_loops(
                     datasaver,
@@ -413,6 +418,7 @@ class QickInstrument(Instrument):
                     save_shots_as_npy,
                     software_sweep_indices=(),
                     progress=True,
+                    ddr4_file=ddr4_file,
                 )
             else:
                 software_sweep_ranges = [
@@ -441,9 +447,49 @@ class QickInstrument(Instrument):
                             save_shots_as_npy,
                             software_sweep_indices=indices,
                             progress=inner_progress,
+                            ddr4_file=ddr4_file,
                         )
 
         return datasaver.run_id
+
+    def _open_ddr4_file(
+        self,
+        datasaver: DataSaver,
+        software_sweeps: Sequence[SoftwareSweep],
+        acquisition_mode: AcquisitionMode,
+    ) -> Ddr4File | nullcontext[None]:
+        """Create the run's DDR4 file, or return a no-op context if none is needed."""
+        save_dir = self.ddr4_buffer.save_dir.get()
+        if acquisition_mode != "ddr4" or save_dir is None:
+            return nullcontext(None)
+        save_dir = Path(save_dir)
+        save_dir.mkdir(parents=True, exist_ok=True)
+        path = save_dir / f"{datasaver.run_id}.nc"
+        if path.exists():
+            msg = (
+                f"{path} already exists. Run IDs restart in every database, "
+                "so use a separate save_dir for each database."
+            )
+            raise FileExistsError(msg)
+        datasaver.dataset.add_metadata("ddr4_file", str(path))
+
+        ddr4 = self.ddr4_buffer
+        n_block = ddr4.n_block.get()
+        return Ddr4File(
+            path,
+            software_sweeps,
+            num_samples=ddr4.num_samples(),
+            dt=n_block / ddr4.sample_rate(),
+            t0=ddr4.block_t0(),
+            attrs={
+                "run_id": datasaver.run_id,
+                "guid": datasaver.dataset.guid,
+                "n_block": n_block,
+                "sample_rate": ddr4.sample_rate(),
+                "num_transfers": ddr4.num_transfers.get(),
+                "adc_channel": ddr4.selected_adc_channel.get(),
+            },
+        )
 
     def _run_hardware_loops(
         self,
@@ -460,6 +506,7 @@ class QickInstrument(Instrument):
         save_shots_as_npy: bool,
         software_sweep_indices: Sequence[int],
         progress: bool,
+        ddr4_file: Ddr4File | None,
     ):
         if acquisition_mode == "ddr4":
             self.ddr4_buffer.arm()
@@ -538,6 +585,8 @@ class QickInstrument(Instrument):
                 time_parameter,
                 result_parameters,
                 acquisition_mode,
+                software_sweep_indices,
+                ddr4_file,
             )
 
         if save_shots_as_npy:
@@ -579,6 +628,8 @@ class QickInstrument(Instrument):
             "ddr4",
             "decimated",
         ],
+        software_sweep_indices: Sequence[int],
+        ddr4_file: Ddr4File | None,
     ) -> None:
         ddr4_channel = self.ddr4_buffer.selected_adc_channel.get()
         reads_per_shot = [ro["trigs"] for ro in program.ro_chs.values()]
@@ -631,29 +682,26 @@ class QickInstrument(Instrument):
                     )
                     result_index += 1
                 elif acquisition_mode == "ddr4":
-                    if channel_num == ddr4_channel:
-                        assert time_parameter is not None
+                    # One continuous record per ADC channel, however many
+                    # readout triggers the channel has per shot
+                    if channel_num == ddr4_channel and readout_num == 0:
                         self.ddr4_buffer.wait_for_record()
                         iq, dt = self.ddr4_buffer.fetch()
-                        time = np.arange(len(iq)) * dt
-                        save_dir = self.ddr4_buffer.save_dir.get()
-                        if save_dir is None:
+                        if ddr4_file is not None:
+                            ddr4_file.write(
+                                software_sweep_indices,
+                                iq,
+                                self.ddr4_buffer.record_completed_at_ns,
+                            )
+                        else:
+                            assert time_parameter is not None
+                            time = self.ddr4_buffer.block_t0() + np.arange(len(iq)) * dt
                             iq_complex = (iq[:, 0] + 1j * iq[:, 1]).astype(np.complex64)
                             datasaver.add_result(
                                 *param_values,
                                 (time_parameter, time),
                                 (result_parameters[result_index], iq_complex),
                             )
-                        else:
-                            save_dir = Path(save_dir)
-                            save_dir.mkdir(parents=True, exist_ok=True)
-                            path = save_dir / f"{datasaver.run_id}.nc"
-                            xr.Dataset(
-                                {"i": ("time", iq[:, 0]), "q": ("time", iq[:, 1])},
-                                coords={"time": ("time", time, {"units": "s"})},
-                                attrs={"decimation": self.ddr4_buffer.decimation.get()},
-                            ).to_netcdf(path, engine="h5netcdf")
-                            datasaver.dataset.add_metadata("ddr4_file", str(path))
                     result_index += 1
                 else:
                     raise NotImplementedError
@@ -758,8 +806,8 @@ class Ddr4Buffer(InstrumentModule):
             ),
             initial_value=1,
         )
-        self.decimation = ManualParameter(
-            name="decimation",
+        self.n_block = ManualParameter(
+            name="n_block",
             instrument=self,
             label="Number of consecutive DDR4 samples averaged into one output sample (boxcar)",
             vals=Ints(min_value=1),
@@ -779,6 +827,7 @@ class Ddr4Buffer(InstrumentModule):
             initial_cache_value=self._query_board_api_version(),
         )
         self._armed_num_transfers: int | None = None
+        self.record_completed_at_ns: int | None = None
 
     def _query_board_api_version(self) -> int | None:
         try:
@@ -803,6 +852,19 @@ class Ddr4Buffer(InstrumentModule):
         if num_transfers is None:
             num_transfers = self.num_transfers.get()
         return num_transfers * self.samples_per_transfer.get() / self.sample_rate()
+
+    def num_samples(self) -> int:
+        """Return the number of samples per record that fetch() will return.
+
+        Uses the current num_transfers and n_block settings.
+        """
+        cfg = self.parent.soccfg["ddr4_buf"]
+        raw = self.num_transfers.get() * cfg["burst_len"] - cfg.get("junk_len", 0)
+        return raw // self.n_block.get()
+
+    def block_t0(self) -> float:
+        """Time (s) of the first saved sample: the centre of the first block."""
+        return (self.n_block.get() - 1) / 2 / self.sample_rate()
 
     def _require_armed(self) -> int:
         if self._armed_num_transfers is None:
@@ -831,17 +893,18 @@ class Ddr4Buffer(InstrumentModule):
             # No completion flag: the trigger fired before the program
             # returned, so the record ends at most `duration` from now.
             sleep(duration)
-            return
-        deadline = monotonic() + duration + 1.0
-        while not self.parent.soc.ddr4_record_done(num_transfers):
-            if monotonic() > deadline:
-                msg = (
-                    f"The DDR4 record ({duration:.3f} s) did not complete. Either "
-                    "the program never triggered the DDR4 buffer (Trigger(..., "
-                    "ddr4=True)) or the input is hard-saturated."
-                )
-                raise RuntimeError(msg)
-            sleep(poll_interval)
+        else:
+            deadline = monotonic() + duration + 1.0
+            while not self.parent.soc.ddr4_record_done(num_transfers):
+                if monotonic() > deadline:
+                    msg = (
+                        f"The DDR4 record ({duration:.3f} s) did not complete. Either "
+                        "the program never triggered the DDR4 buffer (Trigger(..., "
+                        "ddr4=True)) or the input is hard-saturated."
+                    )
+                    raise RuntimeError(msg)
+                sleep(poll_interval)
+        self.record_completed_at_ns = time_ns()
 
     def fetch(self, use_board: bool | None = None) -> tuple[np.ndarray, float]:
         """Read the armed record, boxcar-averaged by `decimation`.
@@ -861,14 +924,14 @@ class Ddr4Buffer(InstrumentModule):
             Sample spacing of `iq` in seconds.
         """
         num_transfers = self._require_armed()
-        factor = self.decimation.get()
+        factor = self.n_block.get()
         cfg = self.parent.soccfg["ddr4_buf"]
         n_out = (num_transfers * cfg["burst_len"] - cfg.get("junk_len", 0)) // factor
         n_bytes = n_out * (4 if factor == 1 else 8)
         if n_bytes > _MAX_DDR4_FETCH_BYTES:
             msg = (
                 f"The record would be {n_bytes / 2**20:.0f} MiB after decimation "
-                f"by {factor}; increase ddr4_buffer.decimation."
+                f"by {factor}; increase ddr4_buffer.n_block."
             )
             raise ValueError(msg)
         if use_board is None:
