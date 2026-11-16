@@ -6,8 +6,11 @@ numpy and qick. Start the server with ``soc_class=QickodesSoc``.
 
 from __future__ import annotations
 
+import os
+from concurrent.futures import ThreadPoolExecutor
+
 import numpy as np
-import qick as QickSoc
+from qick import QickSoc
 
 # Bump when a method signature or behaviour changes; the client checks it.
 BOARD_API_VERSION = 1
@@ -46,13 +49,18 @@ class QickodesSoc(QickSoc):
         return not bool(np.all(tail == _SENTINEL))
 
     def get_ddr4_decimated(
-        self, nt: int, factor: int, chunk_samples: int = 1 << 24
+        self,
+        nt: int,
+        factor: int,
+        chunk_samples: int = 1 << 22,
+        n_threads: int | None = None,
     ) -> np.ndarray:
         """Boxcar-average the DDR4 record of nt transfers on the board.
 
         Covers the same samples as get_ddr4(nt). Returns the raw int16 array
         of shape (n, 2) for factor == 1, otherwise float32 means of consecutive
         blocks of `factor` samples; leftover samples at the end are dropped.
+        Reading and averaging run in parallel on all CPU cores by default.
         """
         factor = int(factor)
         if factor < 1:
@@ -71,13 +79,23 @@ class QickodesSoc(QickSoc):
         mem = self.ddr4_buf.ddr4_array
         out = np.empty((n_blocks, 2), dtype=np.float32)
         blocks_per_chunk = max(1, chunk_samples // factor)
-        for b0 in range(0, n_blocks, blocks_per_chunk):
+        # int32 sums are exact as long as factor * 32768 < 2**31
+        sum_dtype = np.int32 if factor < 1 << 16 else np.int64
+
+        def work(b0: int) -> None:
             b1 = min(b0 + blocks_per_chunk, n_blocks)
             s = start + b0 * factor
             e = start + b1 * factor
             # Copy a 64-bit aligned span (unaligned reads of the DDR4 mapping
             # can crash with SIGBUS, see qick's get_mem), then trim.
-            raw = mem[s - s % 2 : e + e % 2].copy()[s % 2 : s % 2 + (e - s)]
-            iq = raw.view(np.int16).reshape(b1 - b0, factor, 2)
-            out[b0:b1] = iq.sum(axis=1, dtype=np.int64) / factor
+            buf = np.empty(e - s + s % 2 + e % 2, dtype=np.uint32)
+            np.copyto(buf, mem[s - s % 2 : e + e % 2])
+            iq = buf[s % 2 : s % 2 + (e - s)].view(np.int16).reshape(b1 - b0, factor, 2)
+            # Summing I and Q separately gives numpy long inner loops; reducing
+            # over the middle axis of (n, factor, 2) is several times slower.
+            for k in (0, 1):
+                out[b0:b1, k] = iq[..., k].sum(axis=1, dtype=sum_dtype) / factor
+
+        with ThreadPoolExecutor(n_threads or os.cpu_count()) as pool:
+            list(pool.map(work, range(0, n_blocks, blocks_per_chunk)))
         return out
