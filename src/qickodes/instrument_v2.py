@@ -3,8 +3,9 @@ from __future__ import annotations
 import functools
 import itertools
 import logging
+import sqlite3
 from collections.abc import Callable, Sequence
-from contextlib import contextmanager, nullcontext
+from contextlib import closing, contextmanager, nullcontext
 from pathlib import Path
 from time import monotonic, sleep, time_ns
 from typing import TYPE_CHECKING, Literal, get_args
@@ -29,6 +30,7 @@ from qickodes.channels_v2 import (
 from qickodes.ddr4_file import Ddr4File
 from qickodes.geometric_median import geometric_median
 from qickodes.macro_base_v2 import Macro
+from qickodes.macros_v2.trigger import Trigger
 from qickodes.parameters_v2 import SweepableParameter
 from qickodes.programs_v2 import AveragerProgram
 
@@ -166,8 +168,11 @@ class QickInstrument(Instrument):
         )
         self.add_submodule("adcs", self.adcs)
 
-        self.ddr4_buffer = Ddr4Buffer(self, "ddr4_buffer")
-        self.add_submodule("ddr4_buffer", self.ddr4_buffer)
+        # Not every firmware has a DDR4 buffer
+        self.ddr4_buffer: Ddr4Buffer | None = None
+        if "ddr4_buf" in self.soccfg.get_cfg():
+            self.ddr4_buffer = Ddr4Buffer(self, "ddr4_buffer")
+            self.add_submodule("ddr4_buffer", self.ddr4_buffer)
 
         self.macro_list = ChannelList(
             parent=self,
@@ -253,6 +258,27 @@ class QickInstrument(Instrument):
             "firmware": f"remote QICK library version = {self.soccfg['sw_version']}, local QICK library version = {qick.__version__}, firmware timestamp = {self.soccfg['fw_timestamp']}",
         }
 
+    def triggers_ddr4(self) -> bool:
+        """Return whether a macro in macro_list triggers the DDR4 buffer."""
+        return any(
+            isinstance(macro, Trigger) and macro.ddr4.get() for macro in self.macro_list
+        )
+
+    def _check_ddr4_record_fits_database(self) -> None:
+        """Raise if a DDR4 record is too large for the QCoDeS database."""
+        with closing(sqlite3.connect(":memory:")) as connection:
+            limit = connection.getlimit(sqlite3.SQLITE_LIMIT_LENGTH)
+        # iq (complex64) and time (float64) are stored as one blob each
+        n_bytes = self.ddr4_buffer.num_samples() * 8
+        if n_bytes > limit:
+            msg = (
+                f"A DDR4 record of {self.ddr4_buffer.num_samples()} samples needs "
+                f"{n_bytes / 1e6:.3f} MB per array, but the database allows "
+                f"{limit / 1e6:.0f} MB. Set ddr4_buffer.save_dir to save records to "
+                "files, or increase ddr4_buffer.n_block."
+            )
+            raise ValueError(msg)
+
     def run(
         self,
         meas: Measurement,
@@ -289,6 +315,32 @@ class QickInstrument(Instrument):
                 f"got {self.soft_avgs.get()}. Use hard_avgs for the number of shots."
             )
             raise ValueError(msg)
+        if acquisition_mode == "ddr4":
+            if self.ddr4_buffer is None:
+                msg = "This firmware has no DDR4 buffer, so acquisition_mode='ddr4' is not available."
+                raise RuntimeError(msg)
+            if not self.triggers_ddr4():
+                msg = "acquisition_mode='ddr4' needs a Trigger(..., ddr4=True) in the macro_list."
+                raise RuntimeError(msg)
+            ddr4_channel = self.ddr4_buffer.selected_adc_channel.get()
+            triggered = {
+                adc.channel_num
+                for macro in self.macro_list
+                if isinstance(macro, Trigger)
+                for adc in macro.adcs
+            }
+            if ddr4_channel not in triggered:
+                msg = (
+                    f"The DDR4 buffer records ADC {ddr4_channel}, which no Trigger in the "
+                    "macro_list triggers, so its readout would not be configured. Add it, "
+                    f"e.g. Trigger(qi, qi.adcs[{ddr4_channel}], ddr4=True)."
+                )
+                raise RuntimeError(msg)
+            if self.ddr4_buffer.save_dir.get() is None:
+                self._check_ddr4_record_fits_database()
+        ddr4_to_file = (
+            acquisition_mode == "ddr4" and self.ddr4_buffer.save_dir.get() is not None
+        )
         if acquisition_mode == "state population":
             if num_states < 2:
                 msg = f"num_states must be atleast 2, got {num_states}."
@@ -298,11 +350,15 @@ class QickInstrument(Instrument):
                 raise ValueError(msg)
         if hardware_loop_counts is None:
             hardware_loop_counts = {}
-        if len(hardware_loop_counts) == 0 and acquisition_mode in [
-            "accumulated",
-            "accumulated geometric median",
-            "state population",
-        ]:
+        if (
+            len(hardware_loop_counts) == 0
+            and acquisition_mode
+            in [
+                "accumulated",
+                "accumulated geometric median",
+                "state population",
+            ]
+        ) or ddr4_to_file:
             paramtype = "numeric"
             paramtype_iq = "complex"
         else:
@@ -327,75 +383,95 @@ class QickInstrument(Instrument):
             else:
                 shot_parameter = None
 
-            # register the hardware sweep parameters
+            # register the hardware sweep parameters (a DDR4 record holds the
+            # whole hardware loop, so it gets no hardware sweep axes)
             hardware_sweep_parameters = []
-            for loop in hardware_loop_counts:
-                for parameter in self.swept_params:
-                    sweep = parameter.get()
-                    assert isinstance(sweep, qick.asm_v2.QickParam)
-                    if (
-                        loop in sweep.spans
-                        and parameter not in hardware_sweep_parameters
-                    ):
-                        hardware_sweep_parameters.append(parameter)
-                        setpoints.append(parameter)
-                        meas.register_parameter(parameter, paramtype=paramtype)
+            if acquisition_mode != "ddr4":
+                for loop in hardware_loop_counts:
+                    for parameter in self.swept_params:
+                        sweep = parameter.get()
+                        assert isinstance(sweep, qick.asm_v2.QickParam)
+                        if (
+                            loop in sweep.spans
+                            and parameter not in hardware_sweep_parameters
+                        ):
+                            hardware_sweep_parameters.append(parameter)
+                            setpoints.append(parameter)
+                            meas.register_parameter(parameter, paramtype=paramtype)
 
             # register the time axis if necessary
-            if acquisition_mode in ["decimated", "ddr4"]:
+            if acquisition_mode == "decimated" or (
+                acquisition_mode == "ddr4" and not ddr4_to_file
+            ):
                 time_parameter = Parameter("time", label="Time", unit="sec")
                 setpoints.append(time_parameter)
                 meas.register_parameter(time_parameter, paramtype=paramtype)
             else:
                 time_parameter = None
 
-            # generate the program just to obtain the ADC channel numbers and the number of readouts per shot
-            program = AveragerProgram(self, hardware_loop_counts)
-            adc_channel_nums = program.ro_chs.keys()
-            reads_per_shot = [ro["trigs"] for ro in program.ro_chs.values()]
-            if sum(reads_per_shot) == 0:
-                msg = (
-                    "The macro_list contains no readout triggers, so no data is acquired. "
-                    "Include a readout macro with `QickInstrument.set_macro_list()`."
-                )
-                raise RuntimeError(msg)
-
             # create and register the parameters representing the acquired data
             result_parameters = []
-            if acquisition_mode == "state population":
-                for states in itertools.product(
-                    range(num_states), repeat=sum(reads_per_shot)
-                ):
-                    name = "population_" + "_".join(str(state) for state in states)
-                    population_parameter = Parameter(name)
-                    result_parameters.append(population_parameter)
-                    meas.register_parameter(
-                        population_parameter, setpoints, paramtype=paramtype
+            if acquisition_mode == "ddr4":
+                # One record per software-sweep point. The database stores the
+                # record itself, or when the record goes to a file, when it was
+                # acquired (the file holds the data).
+                if ddr4_to_file:
+                    ddr4_parameter = Parameter(
+                        "acquired_at", label="Record acquired at (UNIX time)", unit="s"
                     )
+                    meas.register_parameter(
+                        ddr4_parameter, setpoints, paramtype="numeric"
+                    )
+                else:
+                    ddr4_parameter = Parameter("iq")
+                    meas.register_parameter(
+                        ddr4_parameter, setpoints, paramtype="array"
+                    )
+                result_parameters.append(ddr4_parameter)
             else:
-                for i, channel_num in enumerate(adc_channel_nums):
-                    for readout_num in range(reads_per_shot[i]):
-                        name = "iq"
-                        if reads_per_shot[i] > 1:
-                            name += f"{readout_num}"
-                        if len(adc_channel_nums) > 1:
-                            name += f"_ch{channel_num}"
+                # generate the program just to obtain the ADC channel numbers and the number of readouts per shot
+                program = AveragerProgram(self, hardware_loop_counts)
+                adc_channel_nums = program.ro_chs.keys()
+                reads_per_shot = [ro["trigs"] for ro in program.ro_chs.values()]
+                if sum(reads_per_shot) == 0:
+                    msg = (
+                        "The macro_list contains no readout triggers, so no data is acquired. "
+                        "Include a readout macro with `QickInstrument.set_macro_list()`."
+                    )
+                    raise RuntimeError(msg)
 
-                        iq_parameter = Parameter(name)
-                        result_parameters.append(iq_parameter)
+                if acquisition_mode == "state population":
+                    for states in itertools.product(
+                        range(num_states), repeat=sum(reads_per_shot)
+                    ):
+                        name = "population_" + "_".join(str(state) for state in states)
+                        population_parameter = Parameter(name)
+                        result_parameters.append(population_parameter)
                         meas.register_parameter(
-                            iq_parameter, setpoints, paramtype=paramtype_iq
+                            population_parameter, setpoints, paramtype=paramtype
                         )
+                else:
+                    for i, channel_num in enumerate(adc_channel_nums):
+                        for readout_num in range(reads_per_shot[i]):
+                            name = "iq"
+                            if reads_per_shot[i] > 1:
+                                name += f"{readout_num}"
+                            if len(adc_channel_nums) > 1:
+                                name += f"_ch{channel_num}"
 
-                        if acquisition_mode == "accumulated geometric median":
-                            # also save the median absolute deviation (MAD)
-                            mad_parameter = Parameter(name + "_mad")
-                            result_parameters.append(mad_parameter)
+                            iq_parameter = Parameter(name)
+                            result_parameters.append(iq_parameter)
                             meas.register_parameter(
-                                mad_parameter, setpoints, paramtype=paramtype
+                                iq_parameter, setpoints, paramtype=paramtype_iq
                             )
 
-        self.snapshot(update=True)
+                            if acquisition_mode == "accumulated geometric median":
+                                # also save the median absolute deviation (MAD)
+                                mad_parameter = Parameter(name + "_mad")
+                                result_parameters.append(mad_parameter)
+                                meas.register_parameter(
+                                    mad_parameter, setpoints, paramtype=paramtype
+                                )
 
         with (
             meas.run() as datasaver,
@@ -459,10 +535,9 @@ class QickInstrument(Instrument):
         acquisition_mode: AcquisitionMode,
     ) -> Ddr4File | nullcontext[None]:
         """Create the run's DDR4 file, or return a no-op context if none is needed."""
-        save_dir = self.ddr4_buffer.save_dir.get()
-        if acquisition_mode != "ddr4" or save_dir is None:
+        if acquisition_mode != "ddr4" or self.ddr4_buffer.save_dir.get() is None:
             return nullcontext(None)
-        save_dir = Path(save_dir)
+        save_dir = Path(self.ddr4_buffer.save_dir.get())
         save_dir.mkdir(parents=True, exist_ok=True)
         path = save_dir / f"{datasaver.run_id}.nc"
         if path.exists():
@@ -509,7 +584,17 @@ class QickInstrument(Instrument):
         ddr4_file: Ddr4File | None,
     ):
         if acquisition_mode == "ddr4":
-            self.ddr4_buffer.arm()
+            self._run_ddr4_record(
+                datasaver,
+                software_sweeps,
+                software_sweep_indices,
+                hardware_loop_counts,
+                time_parameter,
+                result_parameters[0],
+                ddr4_file,
+                progress,
+            )
+            return
 
         # run the program
         program = AveragerProgram(self, hardware_loop_counts)
@@ -585,8 +670,6 @@ class QickInstrument(Instrument):
                 time_parameter,
                 result_parameters,
                 acquisition_mode,
-                software_sweep_indices,
-                ddr4_file,
             )
 
         if save_shots_as_npy:
@@ -625,18 +708,13 @@ class QickInstrument(Instrument):
             "accumulated",
             "accumulated geometric median",
             "accumulated shots",
-            "ddr4",
             "decimated",
         ],
-        software_sweep_indices: Sequence[int],
-        ddr4_file: Ddr4File | None,
     ) -> None:
-        ddr4_channel = self.ddr4_buffer.selected_adc_channel.get()
         reads_per_shot = [ro["trigs"] for ro in program.ro_chs.values()]
         result_index = 0
         for channel_index in range(len(reads_per_shot)):
             channel_iq = all_iq[channel_index]
-            channel_num = list(program.ro_chs.keys())[channel_index]
             for readout_num in range(reads_per_shot[channel_index]):
                 # Add acquired data to the result
                 if acquisition_mode == "accumulated":
@@ -681,30 +759,49 @@ class QickInstrument(Instrument):
                         (result_parameters[result_index], iq),
                     )
                     result_index += 1
-                elif acquisition_mode == "ddr4":
-                    # One continuous record per ADC channel, however many
-                    # readout triggers the channel has per shot
-                    if channel_num == ddr4_channel and readout_num == 0:
-                        self.ddr4_buffer.wait_for_record()
-                        iq, dt = self.ddr4_buffer.fetch()
-                        if ddr4_file is not None:
-                            ddr4_file.write(
-                                software_sweep_indices,
-                                iq,
-                                self.ddr4_buffer.record_completed_at_ns,
-                            )
-                        else:
-                            assert time_parameter is not None
-                            time = self.ddr4_buffer.block_t0() + np.arange(len(iq)) * dt
-                            iq_complex = (iq[:, 0] + 1j * iq[:, 1]).astype(np.complex64)
-                            datasaver.add_result(
-                                *param_values,
-                                (time_parameter, time),
-                                (result_parameters[result_index], iq_complex),
-                            )
-                    result_index += 1
                 else:
                     raise NotImplementedError
+
+    def _run_ddr4_record(
+        self,
+        datasaver: DataSaver,
+        software_sweeps: Sequence[SoftwareSweep],
+        software_sweep_indices: Sequence[int],
+        hardware_loop_counts: dict[str, int],
+        time_parameter: Parameter | None,
+        result_parameter: Parameter,
+        ddr4_file: Ddr4File | None,
+        progress: bool,
+    ) -> None:
+        """Acquire one DDR4 record and save it to the run's file or the database."""
+        ddr4 = self.ddr4_buffer
+        ddr4.arm()
+        program = AveragerProgram(self, hardware_loop_counts)
+        qick.qick_asm.AcquireMixin.acquire(
+            self=program, soc=self.soc, rounds=1, progress=progress
+        )
+        ddr4.wait_for_record()
+        iq, dt = ddr4.fetch()
+
+        software_values = [
+            (sweep.parameters[0], sweep.parameters[0].get())
+            for sweep in software_sweeps
+        ]
+        if ddr4_file is not None:
+            ddr4_file.write(software_sweep_indices, iq, ddr4.record_completed_at_ns)
+            datasaver.add_result(
+                *software_values,
+                (result_parameter, ddr4.record_completed_at_ns / 1e9),
+            )
+        else:
+            assert time_parameter is not None
+            time = ddr4.block_t0() + np.arange(len(iq)) * dt
+            iq_complex = (iq[:, 0] + 1j * iq[:, 1]).astype(np.complex64)
+            datasaver.add_result(
+                *software_values,
+                (time_parameter, time),
+                (result_parameter, iq_complex),
+            )
 
     def _save_results_state_population(
         self,
@@ -907,7 +1004,7 @@ class Ddr4Buffer(InstrumentModule):
         self.record_completed_at_ns = time_ns()
 
     def fetch(self, use_board: bool | None = None) -> tuple[np.ndarray, float]:
-        """Read the armed record, boxcar-averaged by `decimation`.
+        """Read the armed record, boxcar-averaged by `n_block`.
 
         Parameters
         ----------
@@ -918,7 +1015,7 @@ class Ddr4Buffer(InstrumentModule):
         Returns
         -------
         iq : np.ndarray
-            Shape (n, 2): raw int16 samples if decimation == 1, otherwise
+            Shape (n, 2): raw int16 samples if n_block == 1, otherwise
             float32 block means.
         dt : float
             Sample spacing of `iq` in seconds.
@@ -930,7 +1027,7 @@ class Ddr4Buffer(InstrumentModule):
         n_bytes = n_out * (4 if factor == 1 else 8)
         if n_bytes > _MAX_DDR4_FETCH_BYTES:
             msg = (
-                f"The record would be {n_bytes / 2**20:.0f} MiB after decimation "
+                f"The record would be {n_bytes / 2**20:.0f} MiB after averaging "
                 f"by {factor}; increase ddr4_buffer.n_block."
             )
             raise ValueError(msg)
@@ -951,7 +1048,7 @@ class Ddr4Buffer(InstrumentModule):
     def _decimate_on_pc(
         self, num_transfers: int, factor: int, chunk_samples: int = 1 << 24
     ) -> np.ndarray:
-        """Fetch the record in chunks (similar to board-side averaging)."""
+        """Fetch the record in chunks and block-average it here (same result as on the board)."""
         cfg = self.parent.soccfg["ddr4_buf"]
         burst = cfg["burst_len"]
         start = cfg.get("junk_len", 0)
