@@ -85,6 +85,89 @@ recommend using a fresh venv for reproducibility.
     - [`meas_resonator_vs_qubit_state.py`](https://github.com/aalto-qcd/qickodes/blob/main/example_scripts/meas_resonator_vs_qubit_state.py): Measure resonator spectra with the qubit in the ground and excited states
     - [`meas_t1.py`](https://github.com/aalto-qcd/qickodes/blob/main/example_scripts/meas_t1.py): Measure the T1 of the qubit
 
+## Long timetraces with the DDR4 buffer (tProc v2)
+
+With `acquisition_mode="ddr4"`, the continuous output of one readou is
+recorded into the board's DDR4 memory: up to 2^30 samples per record.
+The exact max timetrace that can be acquired depends on the firmware
+on the board. Each record is averaged in blocks of `n_block` samples
+on the board (previously this was done by sending the raw data onto
+the measurement computer via Pyro and then averaging done on it,
+however this would store huge chunks of data (in GBs) and take longer
+measurement times). All records of a run are saved in one file.
+
+### Board-side module
+
+The averaging runs inside the board's Pyro server, so
+[`board/qickodes_board.py`](./board/qickodes_board.py) has to be
+copied onto the board. This is the case since v0.3.0.
+
+```shell
+ssh xilinx@ip.address.of.board 'mkdir -p ~/board'
+scp board/qickodes_board.py xilinx@ip.address.of.board:board/
+```
+
+Then start the QICK server with `soc_class=QickodesSoc`:
+
+```shell
+sudo XILINX_XRT=/usr /usr/local/share/pynq-venv/bin/python3 -B -c '
+import sys
+sys.path.insert(0, "/home/xilinx/board")
+from qick.pyro import start_server
+from qickodes_board import QickodesSoc
+start_server(
+    ns_host="ip.address.of.board",
+    ns_port=8888,
+    proxy_name="myqick",
+    soc_class=QickodesSoc,
+    bitfile="/path/to/bitfile.bit",
+)
+'
+```
+
+`qick_instrument.ddr4_buffer.board.api_version.get()` returns `1` when
+the module is running. Without it, qickodes falls back to averaging on
+the measurement PC, which transfers the entire raw record over the
+network which increases the measurement time.
+
+### Measuring
+
+```python
+ddr4 = qick_instrument.ddr4_buffer
+ddr4.selected_adc_channel.set(readout_adc.channel_num)
+ddr4.num_transfers.set(num_transfers)  # record length, see ddr4.record_duration()
+ddr4.n_block.set(157)                  # average blocks of 157 samples (~511 ns on the ZCU216)
+ddr4.save_dir.set("ddr4_data")         # one <run_id>.nc file per run
+
+qick_instrument.set_macro_list([
+    PlayPulse(qick_instrument, readout_pulse, t=0),
+    Trigger(qick_instrument, readout_adc, t=adc_trig_offset, ddr4=True),
+    ...
+])
+qick_instrument.hard_avgs.set(num_shots)  # shots within one record
+qick_instrument.soft_avgs.set(1)
+qick_instrument.run(
+    Measurement(station=station, name="my_measurement"),
+    software_sweeps=[...],                # one record per sweep point
+    acquisition_mode="ddr4",
+)
+```
+
+See [`meas_s21_ddr4.py`](./example_scripts/meas_s21_ddr4.py) for a
+minimal example.
+
+### Reading the data
+
+The file holds the same structure as the `iq` of a `"decimated"` run.
+
+```python
+import xarray as xr
+from qcodes.dataset import load_by_run_spec
+
+dataset = load_by_run_spec(captured_run_id=run_id)
+iq = xr.open_dataarray(dataset.metadata["ddr4_file"], engine="h5netcdf")
+```
+
 ## Citing
 
 QICKoDeS is the work of Yoshiki Sunada, Ashish Panigrahi, Jonatan
