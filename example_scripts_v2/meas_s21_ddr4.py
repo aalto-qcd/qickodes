@@ -2,6 +2,7 @@ from header import *
 
 readout_pulse.length.set(0.2e-6)
 qi.ddr4_buffer.num_transfers.set(10)
+qi.ddr4_buffer.save_dir.set("ddr4_data")
 
 qi.set_macro_list(
     [
