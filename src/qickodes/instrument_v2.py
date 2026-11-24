@@ -273,8 +273,8 @@ class QickInstrument(Instrument):
         if n_bytes > limit:
             msg = (
                 f"A DDR4 record of {self.ddr4_buffer.num_samples()} samples needs "
-                f"{n_bytes / 1e6:.3f} MB per array, but the database allows "
-                f"{limit / 1e6:.0f} MB. Set ddr4_buffer.save_dir to save records to "
+                f"{n_bytes:,} bytes per array, more than the {limit:,} bytes the "
+                "database allows. Set ddr4_buffer.save_dir to save records to "
                 "files, or increase ddr4_buffer.n_block."
             )
             raise ValueError(msg)
