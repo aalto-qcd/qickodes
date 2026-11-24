@@ -153,7 +153,7 @@ qick_instrument.run(
 )
 ```
 
-See [`meas_s21_ddr4.py`](./example_scripts/meas_s21_ddr4.py) for a
+See [`meas_s21_ddr4.py`](./example_scripts_v2/meas_s21_ddr4.py) for a
 minimal example.
 
 ### Reading the data
