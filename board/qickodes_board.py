@@ -1,4 +1,4 @@
-"""Board-sice extensions for qickodes.
+"""Board-side extensions for qickodes.
 
 Runs inside the Pyro server on the RFSoC (PYNQ's Python), so it depends only on
 numpy and qick. Start the server with ``soc_class=QickodesSoc``.
